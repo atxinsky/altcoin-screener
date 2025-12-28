@@ -58,45 +58,25 @@ function App() {
           </div>
         ) : (
           <Space direction="vertical" size="large" style={{ width: '100%' }}>
-            {/* Market Overview & Stats - Full Width Top */}
-            <Row gutter={[16, 16]}>
-              <Col span={24}>
-                <MarketOverview data={marketData} />
-              </Col>
-              {stats && (
-                <Col span={24}>
-                  <StatsPanel stats={stats} />
-                </Col>
-              )}
-            </Row>
+            {/* Market Overview */}
+            <MarketOverview data={marketData} />
 
-            {/* Trading Panel - Full Width */}
-            <Row gutter={[16, 16]}>
-              <Col span={24}>
-                <TradingPanel />
-              </Col>
-            </Row>
+            {/* Stats */}
+            {stats && <StatsPanel stats={stats} />}
 
-            {/* Main Content Grid */}
-            <Row gutter={[16, 16]}>
-              {/* Left Sidebar - Historical Rankings */}
-              <Col xs={24} xl={8}>
-                <HistoricalRankings />
-              </Col>
+            {/* Historical Rankings */}
+            <HistoricalRankings />
 
-              {/* Right Column - Screening & Results */}
-              <Col xs={24} xl={16}>
-                <Space direction="vertical" size="large" style={{ width: '100%' }}>
-                  {/* Screening Panel */}
-                  <Card className="screening-card">
-                    <ScreeningPanel onStatsUpdate={loadInitialData} />
-                  </Card>
+            {/* Trading Panel */}
+            <TradingPanel />
 
-                  {/* Results Table */}
-                  <ResultsTable />
-                </Space>
-              </Col>
-            </Row>
+            {/* Screening Panel */}
+            <Card className="screening-card">
+              <ScreeningPanel onStatsUpdate={loadInitialData} />
+            </Card>
+
+            {/* Results Table */}
+            <ResultsTable />
           </Space>
         )}
       </Content>

@@ -1,11 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { init, dispose } from 'klinecharts'
 import { Spin, Select, Space, Tag, message } from 'antd'
 import { getHistoricalData, getIndicators } from '../services/api'
 
 const { Option } = Select
 
-const KlineChart = ({ symbol, initialTimeframe = '5m', onClose }) => {
+const KlineChart = ({ symbol, initialTimeframe = '5m' }) => {
   const chartRef = useRef(null)
   const chartInstance = useRef(null)
   const [loading, setLoading] = useState(true)
@@ -13,82 +12,45 @@ const KlineChart = ({ symbol, initialTimeframe = '5m', onClose }) => {
   const [anomalyCount, setAnomalyCount] = useState(0)
 
   useEffect(() => {
-    // Initialize chart
-    if (chartRef.current && !chartInstance.current) {
-      chartInstance.current = init(chartRef.current, {
-        grid: {
-          show: true,
-          horizontal: {
-            show: true,
-            color: '#393939',
-            style: 'dashed'
-          },
-          vertical: {
-            show: true,
-            color: '#393939',
-            style: 'dashed'
-          }
-        },
-        candle: {
-          type: 'candle_solid',
-          priceMark: {
-            show: true,
-            high: {
-              show: true,
-              color: '#26A69A',
-              textMargin: 5,
-              textSize: 10
-            },
-            low: {
-              show: true,
-              color: '#EF5350',
-              textMargin: 5,
-              textSize: 10
-            }
-          },
-          tooltip: {
-            showRule: 'always',
-            showType: 'standard',
-            labels: ['时间', '开', '收', '高', '低', '成交量'],
-            text: {
-              size: 12,
-              color: '#D9D9D9'
-            }
-          }
-        },
-        indicator: {
-          tooltip: {
-            showRule: 'always',
-            showType: 'standard'
+    // Dynamically import klinecharts
+    const initChart = async () => {
+      try {
+        const { init, dispose } = await import('klinecharts')
+
+        if (chartRef.current && !chartInstance.current) {
+          chartInstance.current = init(chartRef.current)
+
+          // Create indicators
+          chartInstance.current.createIndicator('MA', false, { id: 'candle_pane' })
+          chartInstance.current.createIndicator('VOL')
+
+          // Load initial data
+          loadChartData()
+        }
+
+        return () => {
+          if (chartInstance.current) {
+            dispose(chartRef.current)
+            chartInstance.current = null
           }
         }
-      })
-
-      // Create main pane indicators
-      chartInstance.current.createIndicator('MA', false, { id: 'candle_pane' })
-      chartInstance.current.createIndicator('EMA', false, { id: 'candle_pane' })
-
-      // Create sub panes for other indicators
-      chartInstance.current.createIndicator('VOL')
-      chartInstance.current.createIndicator('MACD')
-      chartInstance.current.createIndicator('RSI')
-    }
-
-    return () => {
-      if (chartInstance.current) {
-        dispose(chartRef.current)
-        chartInstance.current = null
+      } catch (error) {
+        console.error('Failed to load klinecharts:', error)
+        message.error('图表库加载失败')
+        setLoading(false)
       }
     }
+
+    initChart()
   }, [])
 
   useEffect(() => {
-    loadChartData()
+    if (chartInstance.current) {
+      loadChartData()
+    }
   }, [symbol, timeframe])
 
   const loadChartData = async () => {
-    if (!chartInstance.current) return
-
     setLoading(true)
     try {
       // Fetch historical K-line data
@@ -106,7 +68,9 @@ const KlineChart = ({ symbol, initialTimeframe = '5m', onClose }) => {
         }))
 
         // Apply data to chart
-        chartInstance.current.applyNewData(chartData)
+        if (chartInstance.current) {
+          chartInstance.current.applyNewData(chartData)
+        }
 
         // Get indicators data for anomaly detection
         try {
@@ -122,7 +86,7 @@ const KlineChart = ({ symbol, initialTimeframe = '5m', onClose }) => {
       }
     } catch (error) {
       console.error('Failed to load chart data:', error)
-      message.error('加载图表数据失败')
+      message.error('加载图表数据失败: ' + error.message)
     } finally {
       setLoading(false)
     }
@@ -162,8 +126,7 @@ const KlineChart = ({ symbol, initialTimeframe = '5m', onClose }) => {
           ref={chartRef}
           style={{
             width: '100%',
-            height: '600px',
-            backgroundColor: '#1e1e1e'
+            height: '600px'
           }}
         />
       </Spin>

@@ -318,7 +318,7 @@ function HistoricalRankings() {
           rowKey="symbol"
           loading={loading}
           pagination={{
-            pageSize: 20,
+            pageSize: 5,
             showSizeChanger: false,
             showTotal: (total) => `共 ${total} 个币种`
           }}
