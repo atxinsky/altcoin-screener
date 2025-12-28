@@ -729,7 +729,7 @@ async def get_top_gainers(
     timeframe: str = Query("5m", description="Timeframe (5m, 15m, 1h)"),
     limit: int = Query(20, ge=1, le=100)
 ):
-    """Get top gainers by price change percentage"""
+    """Get top gainers by price change percentage for specified timeframe"""
     try:
         binance = BinanceService()
 
@@ -740,21 +740,37 @@ async def get_top_gainers(
 
         gainers = []
 
+        # 根据时间周期计算需要获取多少根K线
+        candle_count_map = {
+            '5m': 2,    # 当前 + 前一根
+            '15m': 2,
+            '1h': 2,
+            '4h': 2
+        }
+        candle_count = candle_count_map.get(timeframe, 2)
+
         for symbol in symbols[:200]:  # Limit to first 200 symbols to avoid timeout
             try:
-                # Fetch current ticker
-                ticker = binance.fetch_ticker(symbol)
-                if not ticker:
+                # 获取K线数据来计算指定时间周期的涨幅
+                df = binance.fetch_ohlcv(symbol, timeframe, limit=candle_count)
+
+                if df.empty or len(df) < 2:
                     continue
 
-                price_change_pct = ticker.get('percentage')
-                if price_change_pct is None:
+                # 计算涨幅：(当前收盘价 - 前一根收盘价) / 前一根收盘价 * 100
+                current_close = df['close'].iloc[-1]
+                previous_close = df['close'].iloc[-2]
+                price_change_pct = ((current_close - previous_close) / previous_close) * 100
+
+                # 获取当前ticker用于成交量等信息
+                ticker = binance.fetch_ticker(symbol)
+                if not ticker:
                     continue
 
                 gainers.append({
                     'symbol': symbol,
                     'timeframe': timeframe,
-                    'current_price': ticker.get('last', 0),
+                    'current_price': current_close,
                     'price_change_pct': price_change_pct,
                     'volume_24h': ticker.get('quoteVolume', 0),
                     'high_24h': ticker.get('high', 0),
