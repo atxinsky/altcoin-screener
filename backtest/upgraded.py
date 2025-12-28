@@ -20,21 +20,23 @@ from check_api import check_binance_api
 import time
 import hashlib
 import uuid
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy.pool import StaticPool
+
+# 暂时禁用数据库功能
+# from sqlalchemy import create_engine
+# from sqlalchemy.orm import sessionmaker
+# from sqlalchemy.pool import StaticPool
 
 # Optional: Set higher precision for Decimal context if calculations require it
 # getcontext().prec = 28
 
-# 数据库配置
-DATABASE_PATH = "/app/data/altcoin_screener.db"
-engine = create_engine(
-    f"sqlite:///{DATABASE_PATH}",
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool
-)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# 数据库配置（暂时禁用）
+# DATABASE_PATH = "/app/data/altcoin_screener.db"
+# engine = create_engine(
+#     f"sqlite:///{DATABASE_PATH}",
+#     connect_args={"check_same_thread": False},
+#     poolclass=StaticPool
+# )
+# SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # --- Helper Functions ---
 
@@ -230,6 +232,15 @@ def save_to_database(df, uploaded_files):
     """
     将导入的交易数据和分析结果保存到数据库
 
+    暂时禁用此功能，等待完整集成
+    """
+    st.warning("数据库保存功能暂时禁用，数据仅保存在会话中")
+    return None
+
+def save_to_database_disabled(df, uploaded_files):
+    """
+    将导入的交易数据和分析结果保存到数据库
+
     参数:
         df: 处理后的交易数据DataFrame
         uploaded_files: 上传的文件列表
@@ -311,6 +322,15 @@ def save_to_database(df, uploaded_files):
 
 
 def load_recent_analyses(limit=3):
+    """
+    加载最近的分析记录
+
+    暂时禁用此功能
+    """
+    # 暂时返回空列表，等待完整集成
+    return []
+
+def load_recent_analyses_disabled(limit=3):
     """
     加载最近的分析记录
 
