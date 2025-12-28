@@ -74,8 +74,8 @@ export const getHistoricalRankings = async (days = 3, limit = 20) => {
 }
 
 export const getSymbolHistory = async (symbol, days = 7) => {
-  const response = await api.get(`/history/symbol/${symbol}`, {
-    params: { days }
+  const response = await api.get('/history/symbol', {
+    params: { symbol, days }
   })
   return response.data
 }

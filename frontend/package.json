@@ -14,7 +14,8 @@
     "axios": "^1.6.2",
     "@ant-design/icons": "^5.2.6",
     "recharts": "^2.10.3",
-    "dayjs": "^1.11.10"
+    "dayjs": "^1.11.10",
+    "klinecharts": "^9.8.5"
   },
   "devDependencies": {
     "@types/react": "^18.2.43",

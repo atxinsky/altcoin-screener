@@ -72,6 +72,9 @@ class BinanceService:
                 columns=['timestamp', 'open', 'high', 'low', 'close', 'volume']
             )
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+            # Calculate quote volume (volume in quote currency, e.g., USDT)
+            # Use average price (OHLC/4) * volume as approximation
+            df['quote_volume'] = ((df['open'] + df['high'] + df['low'] + df['close']) / 4) * df['volume']
             df['symbol'] = symbol
             df['timeframe'] = timeframe
             return df

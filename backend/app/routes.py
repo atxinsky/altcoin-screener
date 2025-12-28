@@ -392,16 +392,16 @@ async def get_historical_rankings(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/history/symbol/{symbol}")
+@router.get("/history/symbol")
 async def get_symbol_history(
-    symbol: str,
+    symbol: str = Query(..., description="Trading pair symbol"),
     days: int = Query(7, ge=1, le=30),
     db: Session = Depends(get_db_session)
 ):
     """
     Get historical scores for a specific symbol
 
-    - **symbol**: Trading pair symbol
+    - **symbol**: Trading pair symbol (query parameter)
     - **days**: Number of days to look back (default 7)
     """
     try:

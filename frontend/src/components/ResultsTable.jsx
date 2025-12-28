@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { Table, Card, Tag, Space, Button, Modal, Spin, message, Tooltip, InputNumber, Select, Form, Input } from 'antd'
+import { Table, Card, Tag, Space, Button, Modal, Spin, message, Tooltip, InputNumber, Select, Form, Input, Radio } from 'antd'
 import {
   LineChartOutlined,
   CheckCircleOutlined,
@@ -10,16 +10,17 @@ import {
   StarFilled,
   ShoppingCartOutlined
 } from '@ant-design/icons'
-import { getTopOpportunities, generateChart, addToWatchlist, removeFromWatchlist, createMarketOrder } from '../services/api'
+import { getTopOpportunities, addToWatchlist, removeFromWatchlist, createMarketOrder } from '../services/api'
+import KlineChart from './KlineChart'
 
 const { Option } = Select
 
 const ResultsTable = () => {
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(false)
-  const [chartLoading, setChartLoading] = useState(false)
   const [chartModalVisible, setChartModalVisible] = useState(false)
-  const [currentChart, setCurrentChart] = useState(null)
+  const [currentChartSymbol, setCurrentChartSymbol] = useState(null)
+  const [currentChartTimeframe, setCurrentChartTimeframe] = useState('5m')
   const [watchlist, setWatchlist] = useState(new Set())
   const [tradeModalVisible, setTradeModalVisible] = useState(false)
   const [currentSymbol, setCurrentSymbol] = useState(null)
@@ -42,23 +43,10 @@ const ResultsTable = () => {
     }
   }
 
-  const handleViewChart = async (symbol, timeframe) => {
-    setChartLoading(true)
-    try {
-      const result = await generateChart(symbol, timeframe, true)
-      setCurrentChart({
-        symbol,
-        timeframe,
-        url: result.chart_url,
-        anomalyCount: result.anomaly_count
-      })
-      setChartModalVisible(true)
-    } catch (error) {
-      console.error('Failed to generate chart:', error)
-      message.error('生成图表失败')
-    } finally {
-      setChartLoading(false)
-    }
+  const handleViewChart = (symbol, timeframe) => {
+    setCurrentChartSymbol(symbol)
+    setCurrentChartTimeframe(timeframe)
+    setChartModalVisible(true)
   }
 
   const handleToggleWatchlist = async (symbol) => {
@@ -84,22 +72,40 @@ const ResultsTable = () => {
   const handleOpenTrade = (symbol) => {
     setCurrentSymbol(symbol)
     tradeForm.resetFields()
-    tradeForm.setFieldsValue({ symbol, side: 'BUY' })
+    tradeForm.setFieldsValue({ symbol, side: 'BUY', orderType: 'quantity' })
     setTradeModalVisible(true)
   }
 
   const handleTrade = async (values) => {
     try {
+      // If user entered USDT amount, calculate quantity
+      let quantity = values.quantity
+      if (values.orderType === 'usdt' && values.usdtAmount) {
+        // Get current price from data
+        const symbolData = data.find(d => d.symbol === values.symbol)
+        if (symbolData && symbolData.current_price) {
+          quantity = values.usdtAmount / symbolData.current_price
+        } else {
+          message.error('无法获取当前价格，请使用数量模式')
+          return
+        }
+      }
+
       await createMarketOrder(
         values.symbol,
         values.side,
-        values.quantity,
+        quantity,
         `快速交易 - ${new Date().toLocaleString()}`
       )
       message.success('订单已提交')
       setTradeModalVisible(false)
     } catch (error) {
-      message.error('下单失败: ' + error.message)
+      const errorMsg = error.response?.data?.detail || error.message
+      if (errorMsg.includes('Invalid API-key') || errorMsg.includes('permissions')) {
+        message.error('API密钥无交易权限，请在币安设置中启用交易权限或添加IP白名单')
+      } else {
+        message.error('下单失败: ' + errorMsg)
+      }
     }
   }
 
@@ -234,7 +240,6 @@ const ResultsTable = () => {
               size="small"
               icon={<LineChartOutlined />}
               onClick={() => handleViewChart(record.symbol, record.timeframe)}
-              loading={chartLoading}
             />
           </Tooltip>
           <Tooltip title={watchlist.has(record.symbol) ? '取消自选' : '添加自选'}>
@@ -294,25 +299,18 @@ const ResultsTable = () => {
       </Card>
 
       <Modal
-        title={currentChart ? `${currentChart.symbol} - ${currentChart.timeframe}` : 'K线图'}
+        title="K线图"
         open={chartModalVisible}
         onCancel={() => setChartModalVisible(false)}
         footer={null}
         width={1200}
+        bodyStyle={{ padding: '20px' }}
       >
-        {currentChart && (
-          <div>
-            {currentChart.anomalyCount > 0 && (
-              <div style={{ marginBottom: '10px', color: '#ff4d4f' }}>
-                <FireOutlined /> 检测到 {currentChart.anomalyCount} 个价格异动点
-              </div>
-            )}
-            <img
-              src={currentChart.url}
-              alt="K-line Chart"
-              style={{ width: '100%' }}
-            />
-          </div>
+        {currentChartSymbol && (
+          <KlineChart
+            symbol={currentChartSymbol}
+            initialTimeframe={currentChartTimeframe}
+          />
         )}
       </Modal>
 
@@ -345,16 +343,48 @@ const ResultsTable = () => {
             </Select>
           </Form.Item>
           <Form.Item
-            name="quantity"
-            label="数量"
-            rules={[{ required: true, message: '请输入数量' }]}
+            name="orderType"
+            label="下单方式"
           >
-            <InputNumber
-              style={{ width: '100%' }}
-              placeholder="输入交易数量"
-              min={0}
-              step={0.0001}
-            />
+            <Radio.Group>
+              <Radio value="quantity">按数量</Radio>
+              <Radio value="usdt">按USDT金额</Radio>
+            </Radio.Group>
+          </Form.Item>
+          <Form.Item
+            noStyle
+            shouldUpdate={(prevValues, currentValues) => prevValues.orderType !== currentValues.orderType}
+          >
+            {({ getFieldValue }) =>
+              getFieldValue('orderType') === 'quantity' ? (
+                <Form.Item
+                  name="quantity"
+                  label="数量"
+                  rules={[{ required: true, message: '请输入数量' }]}
+                >
+                  <InputNumber
+                    style={{ width: '100%' }}
+                    placeholder="输入交易数量"
+                    min={0}
+                    step={0.0001}
+                  />
+                </Form.Item>
+              ) : (
+                <Form.Item
+                  name="usdtAmount"
+                  label="USDT金额"
+                  rules={[{ required: true, message: '请输入USDT金额' }]}
+                >
+                  <InputNumber
+                    style={{ width: '100%' }}
+                    placeholder="输入USDT金额"
+                    min={0}
+                    step={1}
+                    prefix="$"
+                  />
+                </Form.Item>
+              )
+            }
           </Form.Item>
           <Form.Item>
             <Space>

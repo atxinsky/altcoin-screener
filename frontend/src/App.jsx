@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Layout, Typography, Space, Card, Row, Col, Spin } from 'antd'
-import { RocketOutlined, DollarOutlined, RiseOutlined } from '@ant-design/icons'
+import { RocketOutlined } from '@ant-design/icons'
 import ScreeningPanel from './components/ScreeningPanel'
 import ResultsTable from './components/ResultsTable'
 import MarketOverview from './components/MarketOverview'
@@ -58,25 +58,45 @@ function App() {
           </div>
         ) : (
           <Space direction="vertical" size="large" style={{ width: '100%' }}>
-            {/* Market Overview */}
-            <MarketOverview data={marketData} />
+            {/* Market Overview & Stats - Full Width Top */}
+            <Row gutter={[16, 16]}>
+              <Col span={24}>
+                <MarketOverview data={marketData} />
+              </Col>
+              {stats && (
+                <Col span={24}>
+                  <StatsPanel stats={stats} />
+                </Col>
+              )}
+            </Row>
 
-            {/* Stats */}
-            {stats && <StatsPanel stats={stats} />}
+            {/* Trading Panel - Full Width */}
+            <Row gutter={[16, 16]}>
+              <Col span={24}>
+                <TradingPanel />
+              </Col>
+            </Row>
 
-            {/* Historical Rankings */}
-            <HistoricalRankings />
+            {/* Main Content Grid */}
+            <Row gutter={[16, 16]}>
+              {/* Left Sidebar - Historical Rankings */}
+              <Col xs={24} xl={8}>
+                <HistoricalRankings />
+              </Col>
 
-            {/* Trading Panel */}
-            <TradingPanel />
+              {/* Right Column - Screening & Results */}
+              <Col xs={24} xl={16}>
+                <Space direction="vertical" size="large" style={{ width: '100%' }}>
+                  {/* Screening Panel */}
+                  <Card className="screening-card">
+                    <ScreeningPanel onStatsUpdate={loadInitialData} />
+                  </Card>
 
-            {/* Screening Panel */}
-            <Card className="screening-card">
-              <ScreeningPanel onStatsUpdate={loadInitialData} />
-            </Card>
-
-            {/* Results Table */}
-            <ResultsTable />
+                  {/* Results Table */}
+                  <ResultsTable />
+                </Space>
+              </Col>
+            </Row>
           </Space>
         )}
       </Content>

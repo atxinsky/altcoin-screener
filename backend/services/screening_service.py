@@ -354,7 +354,8 @@ class ScreeningService:
                         high=float(row['high']),
                         low=float(row['low']),
                         close=float(row['close']),
-                        volume=float(row['volume'])
+                        volume=float(row['volume']),
+                        quote_volume=float(row['quote_volume'])
                     )
                     self.db.add(kline)
 

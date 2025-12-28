@@ -22,6 +22,7 @@ import {
   FallOutlined
 } from '@ant-design/icons'
 import { getHistoricalRankings, getSymbolHistory } from '../services/api'
+import KlineChart from './KlineChart'
 
 const { Option } = Select
 
@@ -33,6 +34,8 @@ function HistoricalRankings() {
   const [currentSymbol, setCurrentSymbol] = useState(null)
   const [symbolHistory, setSymbolHistory] = useState([])
   const [historyLoading, setHistoryLoading] = useState(false)
+  const [chartModalVisible, setChartModalVisible] = useState(false)
+  const [chartSymbol, setChartSymbol] = useState(null)
 
   useEffect(() => {
     loadRankings()
@@ -62,6 +65,11 @@ function HistoricalRankings() {
     } finally {
       setHistoryLoading(false)
     }
+  }
+
+  const handleViewChart = (symbol) => {
+    setChartSymbol(symbol)
+    setChartModalVisible(true)
   }
 
   const getTrophyColor = (rank) => {
@@ -141,16 +149,30 @@ function HistoricalRankings() {
     {
       title: '操作',
       key: 'action',
-      width: 100,
+      width: 150,
       render: (_, record) => (
-        <Button
-          type="link"
-          size="small"
-          icon={<LineChartOutlined />}
-          onClick={() => handleViewHistory(record.symbol)}
-        >
-          历史
-        </Button>
+        <Space size="small">
+          <Tooltip title="查看历史记录">
+            <Button
+              type="link"
+              size="small"
+              icon={<HistoryOutlined />}
+              onClick={() => handleViewHistory(record.symbol)}
+            >
+              历史
+            </Button>
+          </Tooltip>
+          <Tooltip title="查看K线图">
+            <Button
+              type="link"
+              size="small"
+              icon={<LineChartOutlined />}
+              onClick={() => handleViewChart(record.symbol)}
+            >
+              图表
+            </Button>
+          </Tooltip>
+        </Space>
       )
     }
   ]
@@ -326,6 +348,22 @@ function HistoricalRankings() {
           pagination={{ pageSize: 10 }}
           size="small"
         />
+      </Modal>
+
+      <Modal
+        title="K线图"
+        open={chartModalVisible}
+        onCancel={() => setChartModalVisible(false)}
+        footer={null}
+        width={1200}
+        bodyStyle={{ padding: '20px' }}
+      >
+        {chartSymbol && (
+          <KlineChart
+            symbol={chartSymbol}
+            initialTimeframe="5m"
+          />
+        )}
       </Modal>
 
       <style jsx>{`
