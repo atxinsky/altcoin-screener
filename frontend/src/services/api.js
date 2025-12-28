@@ -46,15 +46,15 @@ export const generateChart = async (symbol, timeframe = '5m', showIndicators = t
 
 // Data endpoints
 export const getHistoricalData = async (symbol, timeframe = '5m', days = 7) => {
-  const response = await api.get(`/historical/${symbol}`, {
-    params: { timeframe, days }
+  const response = await api.get('/historical', {
+    params: { symbol, timeframe, days }
   })
   return response.data
 }
 
 export const getIndicators = async (symbol, timeframe = '5m') => {
-  const response = await api.get(`/indicators/${symbol}`, {
-    params: { timeframe }
+  const response = await api.get('/indicators', {
+    params: { symbol, timeframe }
   })
   return response.data
 }

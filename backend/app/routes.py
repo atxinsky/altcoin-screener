@@ -205,9 +205,9 @@ async def generate_chart(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/historical/{symbol}")
+@router.get("/historical")
 async def get_historical_data(
-    symbol: str,
+    symbol: str = Query(..., description="Trading pair symbol"),
     timeframe: str = Query("5m"),
     days: int = Query(7, ge=1, le=30)
 ):
@@ -245,9 +245,9 @@ async def get_historical_data(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/indicators/{symbol}")
+@router.get("/indicators")
 async def get_indicators(
-    symbol: str,
+    symbol: str = Query(..., description="Trading pair symbol"),
     timeframe: str = Query("5m")
 ):
     """Get technical indicators for a symbol"""
