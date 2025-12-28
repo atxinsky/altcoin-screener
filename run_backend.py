@@ -9,7 +9,7 @@ from backend.config import settings
 if __name__ == "__main__":
     print("""
     ╔═══════════════════════════════════════════════════════╗
-    ║     Binance Altcoin Screener - Backend Server        ║
+    ║       Tretra Trading Station - Backend API           ║
     ║                                                       ║
     ║  API Server: http://localhost:8000                    ║
     ║  API Docs:   http://localhost:8000/docs               ║

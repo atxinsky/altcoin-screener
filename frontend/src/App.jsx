@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { Layout, Typography, Space, Card, Row, Col, Spin } from 'antd'
-import { RocketOutlined } from '@ant-design/icons'
+import { Layout, Typography, Space, Card, Row, Col, Spin, Menu } from 'antd'
+import { RocketOutlined, LineChartOutlined, BarChartOutlined } from '@ant-design/icons'
 import ScreeningPanel from './components/ScreeningPanel'
 import ResultsTable from './components/ResultsTable'
 import MarketOverview from './components/MarketOverview'
@@ -16,6 +16,7 @@ function App() {
   const [marketData, setMarketData] = useState(null)
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [currentView, setCurrentView] = useState('screener')
 
   useEffect(() => {
     loadInitialData()
@@ -37,47 +38,112 @@ function App() {
     }
   }
 
+  const menuItems = [
+    {
+      key: 'screener',
+      icon: <LineChartOutlined />,
+      label: '山寨币筛选器',
+    },
+    {
+      key: 'backtest',
+      icon: <BarChartOutlined />,
+      label: '交易回测分析',
+    },
+  ]
+
   return (
     <Layout style={{ minHeight: '100vh' }}>
-      <Header className="app-header">
-        <Space align="center">
-          <RocketOutlined style={{ fontSize: '32px' }} />
-          <Title level={2} style={{ color: 'white', margin: 0 }}>
-            币安山寨币筛选器
-          </Title>
-        </Space>
-        <div style={{ fontSize: '14px', marginTop: '5px', opacity: 0.9 }}>
-          抓取BTC/ETH上涨时的Beta机会
+      <Header style={{
+        background: '#001529',
+        padding: '0 50px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        height: '80px'
+      }}>
+        <div>
+          <Space align="center">
+            <RocketOutlined style={{ fontSize: '32px', color: '#1890ff' }} />
+            <div>
+              <Title level={2} style={{ color: 'white', margin: 0, lineHeight: '1.2' }}>
+                Tretra Trading Station
+              </Title>
+              <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.65)', marginTop: '-5px' }}>
+                专业交易分析平台
+              </div>
+            </div>
+          </Space>
         </div>
+        <Menu
+          theme="dark"
+          mode="horizontal"
+          selectedKeys={[currentView]}
+          items={menuItems}
+          onClick={({ key }) => setCurrentView(key)}
+          style={{
+            background: 'transparent',
+            borderBottom: 'none',
+            fontSize: '16px',
+            minWidth: '300px'
+          }}
+        />
       </Header>
 
-      <Content className="app-container">
-        {loading ? (
-          <div style={{ textAlign: 'center', padding: '100px 0' }}>
-            <Spin size="large" />
-          </div>
+      <Content
+        className={currentView === 'screener' ? "app-container" : ""}
+        style={currentView === 'backtest' ? {
+          padding: 0,
+          maxWidth: '100%',
+          margin: 0,
+          width: '100%'
+        } : {}}
+      >
+        {currentView === 'screener' ? (
+          loading ? (
+            <div style={{ textAlign: 'center', padding: '100px 0' }}>
+              <Spin size="large" />
+            </div>
+          ) : (
+            <Space direction="vertical" size="large" style={{ width: '100%' }}>
+              {/* Market Overview */}
+              <MarketOverview data={marketData} />
+
+              {/* Stats */}
+              {stats && <StatsPanel stats={stats} />}
+
+              {/* Historical Rankings */}
+              <HistoricalRankings />
+
+              {/* Trading Panel */}
+              <TradingPanel />
+
+              {/* Screening Panel */}
+              <Card className="screening-card">
+                <ScreeningPanel onStatsUpdate={loadInitialData} />
+              </Card>
+
+              {/* Results Table */}
+              <ResultsTable />
+            </Space>
+          )
         ) : (
-          <Space direction="vertical" size="large" style={{ width: '100%' }}>
-            {/* Market Overview */}
-            <MarketOverview data={marketData} />
-
-            {/* Stats */}
-            {stats && <StatsPanel stats={stats} />}
-
-            {/* Historical Rankings */}
-            <HistoricalRankings />
-
-            {/* Trading Panel */}
-            <TradingPanel />
-
-            {/* Screening Panel */}
-            <Card className="screening-card">
-              <ScreeningPanel onStatsUpdate={loadInitialData} />
-            </Card>
-
-            {/* Results Table */}
-            <ResultsTable />
-          </Space>
+          <div style={{
+            width: '100%',
+            height: 'calc(100vh - 80px)',
+            padding: 0,
+            margin: 0
+          }}>
+            <iframe
+              src="http://localhost:8501"
+              style={{
+                width: '100%',
+                height: '100%',
+                border: 'none',
+                display: 'block'
+              }}
+              title="交易回测分析"
+            />
+          </div>
         )}
       </Content>
     </Layout>

@@ -1,0 +1,8 @@
+BinanceTradeAnalyzer/
+├── upgraded_app.py       # 主应用程序
+├── order_panel.py        # 订单面板组件
+├── chart_component.html  # K线图表组件
+├── requirements.txt      # 依赖项列表
+├── setup.bat             # Windows启动脚本
+├── setup.sh              # Linux/Mac启动脚本
+└── README.md             # 使用说明

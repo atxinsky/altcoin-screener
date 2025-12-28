@@ -1,6 +1,6 @@
 {
-  "name": "binance-altcoin-screener-frontend",
-  "version": "1.0.0",
+  "name": "tretra-trading-station-frontend",
+  "version": "1.1.0",
   "private": true,
   "scripts": {
     "dev": "vite",

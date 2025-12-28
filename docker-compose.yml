@@ -6,7 +6,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    container_name: altcoin-screener-backend
+    container_name: tretra-backend
     restart: unless-stopped
     ports:
       - "8001:8000"
@@ -30,7 +30,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.monitor
-    container_name: altcoin-screener-monitor
+    container_name: tretra-monitor
     restart: unless-stopped
     volumes:
       - ./data:/app/data
@@ -44,12 +44,32 @@ services:
     depends_on:
       - backend
 
+  # Backtest Service (Streamlit)
+  backtest:
+    build:
+      context: .
+      dockerfile: Dockerfile.backtest
+    container_name: tretra-backtest
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./backtest/Trade data:/app/backtest/Trade data
+      - ./.env:/app/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+    networks:
+      - screener-network
+    depends_on:
+      - backend
+
   # Frontend
   frontend:
     build:
       context: .
       dockerfile: Dockerfile.frontend
-    container_name: altcoin-screener-frontend
+    container_name: tretra-frontend
     restart: unless-stopped
     ports:
       - "3000:80"
@@ -57,6 +77,7 @@ services:
       - screener-network
     depends_on:
       - backend
+      - backtest
 
 networks:
   screener-network:

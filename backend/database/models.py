@@ -177,3 +177,85 @@ class Alert(Base):
     data = Column(JSON)
     sent_via = Column(String)  # email, telegram, both
     timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class ImportedTrade(Base):
+    """Imported trading data from CSV files"""
+    __tablename__ = "imported_trades"
+
+    id = Column(Integer, primary_key=True, index=True)
+    import_id = Column(String, index=True, nullable=False)  # Batch import identifier
+    trade_id = Column(String, index=True)  # Original trade ID from exchange
+    symbol = Column(String, index=True, nullable=False)
+    side = Column(String, nullable=False)  # BUY or SELL
+    price = Column(Float, nullable=False)
+    quantity = Column(Float, nullable=False)
+    quote_quantity = Column(Float, nullable=False)  # Total value in quote currency
+    commission = Column(Float)
+    commission_asset = Column(String)
+    timestamp = Column(DateTime, index=True, nullable=False)
+    is_buyer = Column(Boolean)
+    is_maker = Column(Boolean)
+    raw_data = Column(JSON)  # Store original CSV row
+    imported_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index('idx_import_symbol_timestamp', 'import_id', 'symbol', 'timestamp'),
+    )
+
+
+class BacktestAnalysis(Base):
+    """Backtest analysis results"""
+    __tablename__ = "backtest_analysis"
+
+    id = Column(Integer, primary_key=True, index=True)
+    analysis_id = Column(String, index=True, nullable=False, unique=True)  # Unique identifier for this analysis
+    import_id = Column(String, index=True, nullable=False)  # Link to imported trades
+    symbol = Column(String, index=True)  # Specific symbol analyzed, null for overall
+    timeframe = Column(String)  # Analysis timeframe
+
+    # Overall statistics
+    total_trades = Column(Integer)
+    winning_trades = Column(Integer)
+    losing_trades = Column(Integer)
+    win_rate = Column(Float)
+
+    # P&L metrics
+    total_pnl = Column(Float)
+    total_pnl_percentage = Column(Float)
+    avg_win = Column(Float)
+    avg_loss = Column(Float)
+    profit_factor = Column(Float)
+
+    # Risk metrics
+    max_drawdown = Column(Float)
+    max_drawdown_percentage = Column(Float)
+    sharpe_ratio = Column(Float)
+
+    # Trading behavior
+    avg_holding_time_hours = Column(Float)
+    total_commission = Column(Float)
+
+    # Additional analysis data
+    analysis_data = Column(JSON)  # Store detailed charts, distributions, etc.
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    __table_args__ = (
+        Index('idx_analysis_import_symbol', 'import_id', 'symbol'),
+    )
+
+
+class ImportHistory(Base):
+    """Track CSV import history"""
+    __tablename__ = "import_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    import_id = Column(String, index=True, nullable=False, unique=True)
+    filename = Column(String, nullable=False)
+    file_hash = Column(String)  # MD5 hash to detect duplicate imports
+    rows_imported = Column(Integer)
+    date_range_start = Column(DateTime)
+    date_range_end = Column(DateTime)
+    symbols_count = Column(Integer)
+    import_notes = Column(String)
+    imported_at = Column(DateTime, default=datetime.utcnow, index=True)

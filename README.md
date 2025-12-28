@@ -1,10 +1,21 @@
-# 币安山寨币筛选器 (Binance Altcoin Screener)
+# Tretra Trading Station
 
-一个专业的币安现货山寨币筛选系统，用于在BTC/ETH开启季度级别上涨时，抓取高超额机会。
+一个专业的加密货币交易分析平台，集成币安现货山寨币筛选和历史交易回测分析功能。
+
+## 平台简介
+
+Tretra Trading Station 是一个全方位的加密货币交易工具，包含两大核心功能：
+
+1. **山寨币筛选器**: 实时筛选高Beta机会，用于在BTC/ETH开启季度级别上涨时，抓取强势山寨币
+2. **交易回测分析**: 导入历史交易数据，进行深度分析和可视化，优化交易策略
 
 ## 功能特性
 
-### 核心功能
+### 界面导航
+- ✅ **统一入口**: 顶部导航栏一键切换筛选器和回测分析
+- ✅ **全屏显示**: 回测分析界面全屏展示，优化数据可视化体验
+
+### 山寨币筛选器功能
 - ✅ **智能筛选**: 只筛选活跃的USDT现货交易对，自动过滤已下架币种
 - ✅ **数据存储**: SQLite数据库存储历史K线数据，带数据新鲜度验证
 - ✅ **价格比率分析**: 计算山寨币价格相对BTC/ETH的24小时比率变化
@@ -25,6 +36,15 @@
 - ✅ **Web界面**: 简洁专业的React前端界面
 - ✅ **实时监控**: 定时自动筛选和警报
 - ✅ **Docker部署**: 一键启动，环境隔离
+
+### 交易回测分析功能
+- ✅ **CSV数据导入**: 支持从币安、OKX等交易所导入历史交易数据
+- ✅ **多维度分析**: 胜率、盈亏比、最大回撤、夏普比率等专业指标
+- ✅ **交易可视化**: 盈亏分布图、累计收益曲线、持仓时长分析
+- ✅ **分时段统计**: 按日期、按币种、按交易对分析表现
+- ✅ **实时K线对比**: 结合历史交易点位与实时K线图表分析
+- ✅ **数据持久化**: 导入的交易数据和分析结果存储到数据库
+- ✅ **Excel导出**: 分析结果可导出为Excel文件
 
 ### 筛选评分系统
 
@@ -66,14 +86,19 @@ binance-altcoin-screener/
 │   │   │   ├── Dashboard.jsx       # 仪表盘
 │   │   │   └── ...
 │   │   ├── services/      # API服务
-│   │   └── App.jsx        # 主应用
+│   │   └── App.jsx        # 主应用（含导航）
 │   └── package.json
-├── data/                   # 数据库文件
+├── backtest/               # 交易回测分析
+│   ├── upgraded.py        # Streamlit回测应用
+│   ├── .streamlit/        # Streamlit配置
+│   └── Trade data/        # 交易数据目录
+├── data/                   # 数据库和数据文件
 ├── logs/                   # 日志文件
 ├── charts/                 # 生成的图表
-├── docker-compose.yml      # Docker编排
+├── docker-compose.yml      # Docker编排（4个服务）
 ├── Dockerfile.backend      # 后端容器
 ├── Dockerfile.frontend     # 前端容器
+├── Dockerfile.backtest     # 回测容器
 ├── run_backend.py         # 启动后端
 ├── run_monitor.py         # 启动监控
 └── README.md
@@ -141,8 +166,11 @@ docker-compose logs -f
 #### 4. 访问服务
 
 - **前端界面**: http://localhost:3000
+  - 山寨币筛选器入口
+  - 交易回测分析入口（顶部导航切换）
 - **后端API**: http://localhost:8001
 - **API文档**: http://localhost:8001/docs
+- **回测服务**: http://localhost:8501 (由前端iframe嵌入)
 
 #### 5. 停止服务
 
@@ -502,6 +530,18 @@ VACUUM;
 7. ✅ 设置合理的交易限额
 
 ## 更新日志
+
+### v1.2 (2025-12-29) - Tretra Trading Station
+- 🎉 **重大更新**: 重命名为 Tretra Trading Station
+- ✨ 新增交易回测分析功能（Streamlit）
+- ✨ 新增顶部导航栏，一键切换筛选器和回测分析
+- ✨ 全屏回测界面，优化数据可视化体验
+- 📊 支持CSV导入币安、OKX历史交易数据
+- 📊 多维度交易分析：胜率、盈亏比、最大回撤、夏普比率
+- 🗄️ 新增数据库模型：ImportedTrade、BacktestAnalysis、ImportHistory
+- 🐳 新增 Dockerfile.backtest，Docker编排支持4个服务
+- 🔧 回测服务与主程序共享环境变量配置
+- 🔧 修复回测CSV文件保存路径，适配Docker环境
 
 ### v1.1 (2025-12-28)
 - ✨ 新增5分钟/15分钟/1小时涨跌幅显示

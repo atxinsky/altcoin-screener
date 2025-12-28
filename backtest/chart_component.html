@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>交易K线图表</title>
+    <script src="https://cdn.jsdelivr.net/npm/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif; }
+        #chart-container { position: relative; width: 100%; height: 600px; }
+        .chart-title { text-align: center; margin: 10px 0; font-size: 18px; font-weight: bold; }
+        .legend-container { position: absolute; top: 10px; left: 10px; z-index: 1000; background-color: rgba(255, 255, 255, 0.8); padding: 5px 10px; border-radius: 5px; }
+        .legend-line { display: flex; align-items: center; margin: 5px 0; }
+        .legend-color { width: 12px; height: 12px; margin-right: 8px; }
+        .legend-text { font-size: 14px; }
+    </style>
+</head>
+<body>
+    <div class="chart-title">K线图表与交易标记</div>
+    <div id="chart-container"></div>
+    <div class="legend-container">
+        <div class="legend-line">
+            <div class="legend-color" style="background-color: #26a69a;"></div>
+            <div class="legend-text">买入</div>
+        </div>
+        <div class="legend-line">
+            <div class="legend-color" style="background-color: #ef5350;"></div>
+            <div class="legend-text">卖出</div>
+        </div>
+    </div>
+
+    <script>
+        // 创建图表
+        function createChart(container) {
+            const chart = LightweightCharts.createChart(container, {
+                width: container.clientWidth,
+                height: container.clientHeight,
+                layout: {
+                    backgroundColor: '#ffffff',
+                    textColor: '#333',
+                },
+                grid: {
+                    vertLines: { color: '#f0f0f0' },
+                    horzLines: { color: '#f0f0f0' },
+                },
+                crosshair: {
+                    mode: LightweightCharts.CrosshairMode.Normal,
+                },
+                rightPriceScale: {
+                    borderColor: '#d1d1d1',
+                },
+                timeScale: {
+                    borderColor: '#d1d1d1',
+                    timeVisible: true,
+                },
+            });
+
+            // 创建K线图系列
+            const candleSeries = chart.addCandlestickSeries({
+                upColor: '#26a69a',
+                downColor: '#ef5350',
+                borderUpColor: '#26a69a',
+                borderDownColor: '#ef5350',
+                wickUpColor: '#26a69a',
+                wickDownColor: '#ef5350',
+            });
+
+            // 创建成交量系列
+            const volumeSeries = chart.addHistogramSeries({
+                color: '#26a69a',
+                priceFormat: {
+                    type: 'volume',
+                },
+                priceScaleId: '',
+                scaleMargins: {
+                    top: 0.8,
+                    bottom: 0,
+                },
+            });
+
+            // 窗口大小改变时调整图表大小
+            window.addEventListener('resize', () => {
+                chart.applyOptions({
+                    width: container.clientWidth,
+                    height: container.clientHeight,
+                });
+            });
+
+            return { chart, candleSeries, volumeSeries };
+        }
+
+        // 加载数据函数
+        function loadChartData(ohlcData, tradeData) {
+            const container = document.getElementById('chart-container');
+            const { chart, candleSeries, volumeSeries } = createChart(container);
+
+            // 设置K线数据格式
+            const candleData = ohlcData.map(item => ({
+                time: new Date(item.time).getTime() / 1000,
+                open: item.open,
+                high: item.high,
+                low: item.low,
+                close: item.close
+            }));
+
+            // 设置成交量数据格式
+            const volumeData = ohlcData.map(item => ({
+                time: new Date(item.time).getTime() / 1000,
+                value: item.volume,
+                color: item.close >= item.open ? '#26a69a80' : '#ef535080'
+            }));
+
+            // 添加K线数据
+            candleSeries.setData(candleData);
+            
+            // 添加成交量数据
+            volumeSeries.setData(volumeData);
+
+            // 添加交易标记
+            if (tradeData && tradeData.length > 0) {
+                // 买入标记
+                const buyMarkers = tradeData
+                    .filter(trade => trade.side.toUpperCase() === 'BUY')
+                    .map(trade => ({
+                        time: new Date(trade.timestamp).getTime() / 1000,
+                        position: 'belowBar',
+                        color: '#26a69a',
+                        shape: 'arrowUp',
+                        text: `买入 ${trade.qty} @ ${trade.price}\nPnL: ${trade.pnl.toFixed(4)}`
+                    }));
+
+                // 卖出标记
+                const sellMarkers = tradeData
+                    .filter(trade => trade.side.toUpperCase() === 'SELL')
+                    .map(trade => ({
+                        time: new Date(trade.timestamp).getTime() / 1000,
+                        position: 'aboveBar',
+                        color: '#ef5350',
+                        shape: 'arrowDown',
+                        text: `卖出 ${trade.qty} @ ${trade.price}\nPnL: ${trade.pnl.toFixed(4)}`
+                    }));
+
+                // 添加所有标记
+                const allMarkers = [...buyMarkers, ...sellMarkers];
+                candleSeries.setMarkers(allMarkers);
+            }
+
+            // 适配视图
+            chart.timeScale().fitContent();
+        }
+
+        // 默认情况下创建一个空图表
+        const container = document.getElementById('chart-container');
+        createChart(container);
+    </script>
+</body>
+</html>
