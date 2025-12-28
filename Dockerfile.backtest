@@ -26,7 +26,8 @@ RUN pip install --no-cache-dir \
     plotly>=5.10.0 \
     openpyxl>=3.0.10 \
     requests>=2.28.0 \
-    python-binance>=1.0.17
+    python-binance>=1.0.17 \
+    sqlalchemy>=2.0.0
 
 # 创建数据目录
 RUN mkdir -p /app/data /app/backtest/Trade\ data
