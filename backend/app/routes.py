@@ -722,3 +722,59 @@ async def remove_from_watchlist(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/top-gainers")
+async def get_top_gainers(
+    timeframe: str = Query("5m", description="Timeframe (5m, 15m, 1h)"),
+    limit: int = Query(20, ge=1, le=100)
+):
+    """Get top gainers by price change percentage"""
+    try:
+        binance = BinanceService()
+
+        # Get all USDT pairs
+        symbols = binance.get_usdt_symbols()
+        if not symbols:
+            return {"success": True, "count": 0, "results": []}
+
+        gainers = []
+
+        for symbol in symbols[:200]:  # Limit to first 200 symbols to avoid timeout
+            try:
+                # Fetch current ticker
+                ticker = binance.fetch_ticker(symbol)
+                if not ticker:
+                    continue
+
+                price_change_pct = ticker.get('percentage')
+                if price_change_pct is None:
+                    continue
+
+                gainers.append({
+                    'symbol': symbol,
+                    'timeframe': timeframe,
+                    'current_price': ticker.get('last', 0),
+                    'price_change_pct': price_change_pct,
+                    'volume_24h': ticker.get('quoteVolume', 0),
+                    'high_24h': ticker.get('high', 0),
+                    'low_24h': ticker.get('low', 0)
+                })
+            except Exception as e:
+                print(f"Error fetching {symbol}: {e}")
+                continue
+
+        # Sort by price change percentage
+        gainers.sort(key=lambda x: x['price_change_pct'], reverse=True)
+
+        # Take top N
+        top_gainers = gainers[:limit]
+
+        return {
+            "success": True,
+            "count": len(top_gainers),
+            "results": top_gainers
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Spin, Select, Space, Tag, message } from 'antd'
+import { Spin, Select, Space, Tag, message, InputNumber, Tooltip, Button, Popover } from 'antd'
+import { SettingOutlined } from '@ant-design/icons'
 import { getHistoricalData, getIndicators } from '../services/api'
 
 const { Option } = Select
@@ -10,19 +11,35 @@ const KlineChart = ({ symbol, initialTimeframe = '5m' }) => {
   const [loading, setLoading] = useState(true)
   const [timeframe, setTimeframe] = useState(initialTimeframe)
   const [anomalyCount, setAnomalyCount] = useState(0)
+  const [currentPrice, setCurrentPrice] = useState(0)
+  const [hoverPrice, setHoverPrice] = useState(null)
+  const [currentCandle, setCurrentCandle] = useState(null)
+
+  // 均线参数设置
+  const [maParams, setMaParams] = useState([5, 10, 20, 60])
+  const [emaParams, setEmaParams] = useState([7, 14, 30])
+  const [settingsVisible, setSettingsVisible] = useState(false)
 
   useEffect(() => {
     // Dynamically import klinecharts
     const initChart = async () => {
       try {
-        const { init, dispose } = await import('klinecharts')
+        const klinecharts = await import('klinecharts')
 
         if (chartRef.current && !chartInstance.current) {
-          chartInstance.current = init(chartRef.current)
+          // 初始化图表
+          chartInstance.current = klinecharts.init(chartRef.current)
 
-          // Create indicators
-          chartInstance.current.createIndicator('MA', false, { id: 'candle_pane' })
-          chartInstance.current.createIndicator('VOL')
+          // 设置十字光标监听
+          chartInstance.current.subscribeAction('onCrosshairChange', (data) => {
+            if (data && data.dataIndex !== undefined && data.kLineData) {
+              setHoverPrice(data.kLineData.close)
+              setCurrentCandle(data.kLineData)
+            } else {
+              setHoverPrice(null)
+              setCurrentCandle(null)
+            }
+          })
 
           // Load initial data
           loadChartData()
@@ -30,7 +47,7 @@ const KlineChart = ({ symbol, initialTimeframe = '5m' }) => {
 
         return () => {
           if (chartInstance.current) {
-            dispose(chartRef.current)
+            klinecharts.dispose(chartRef.current)
             chartInstance.current = null
           }
         }
@@ -49,6 +66,35 @@ const KlineChart = ({ symbol, initialTimeframe = '5m' }) => {
       loadChartData()
     }
   }, [symbol, timeframe])
+
+  useEffect(() => {
+    if (chartInstance.current) {
+      updateIndicators()
+    }
+  }, [maParams, emaParams])
+
+  const updateIndicators = () => {
+    if (!chartInstance.current) return
+
+    // 移除所有旧指标
+    chartInstance.current.removeIndicator({ name: 'MA' })
+    chartInstance.current.removeIndicator({ name: 'EMA' })
+
+    // 添加MA指标
+    chartInstance.current.createIndicator('MA', false, {
+      id: 'candle_pane',
+      calcParams: maParams
+    })
+
+    // 添加EMA指标
+    chartInstance.current.createIndicator('EMA', false, {
+      id: 'candle_pane',
+      calcParams: emaParams
+    })
+
+    // 添加成交量指标
+    chartInstance.current.createIndicator('VOL')
+  }
 
   const loadChartData = async () => {
     setLoading(true)
@@ -70,6 +116,16 @@ const KlineChart = ({ symbol, initialTimeframe = '5m' }) => {
         // Apply data to chart
         if (chartInstance.current) {
           chartInstance.current.applyNewData(chartData)
+
+          // 设置当前价格
+          const lastCandle = chartData[chartData.length - 1]
+          setCurrentPrice(lastCandle.close)
+
+          // 更新指标
+          updateIndicators()
+
+          // 自动缩放Y轴以适应数据
+          chartInstance.current.zoomAtDataIndex(chartData.length - 1, 1)
         }
 
         // Get indicators data for anomaly detection
@@ -96,10 +152,95 @@ const KlineChart = ({ symbol, initialTimeframe = '5m' }) => {
     setTimeframe(value)
   }
 
+  // 计算涨跌幅
+  const calculateChangePercent = (price1, price2) => {
+    if (!price1 || !price2) return 0
+    return ((price2 - price1) / price1 * 100).toFixed(2)
+  }
+
+  // 计算振幅
+  const calculateAmplitude = (candle) => {
+    if (!candle) return 0
+    return ((candle.high - candle.low) / candle.low * 100).toFixed(2)
+  }
+
+  // K线涨跌幅
+  const candleChangePercent = currentCandle
+    ? calculateChangePercent(currentCandle.open, currentCandle.close)
+    : 0
+
+  // 当前价格与鼠标位置涨跌幅
+  const hoverChangePercent = hoverPrice
+    ? calculateChangePercent(currentPrice, hoverPrice)
+    : 0
+
+  // 振幅
+  const amplitude = currentCandle ? calculateAmplitude(currentCandle) : 0
+
+  const settingsContent = (
+    <div style={{ width: 300 }}>
+      <div style={{ marginBottom: 16 }}>
+        <h4>MA均线参数</h4>
+        <Space>
+          {maParams.map((param, index) => (
+            <InputNumber
+              key={`ma-${index}`}
+              size="small"
+              min={1}
+              max={200}
+              value={param}
+              onChange={(value) => {
+                const newParams = [...maParams]
+                newParams[index] = value
+                setMaParams(newParams)
+              }}
+              style={{ width: 60 }}
+            />
+          ))}
+        </Space>
+        <Button
+          size="small"
+          style={{ marginLeft: 8 }}
+          onClick={() => setMaParams([...maParams, 30])}
+        >
+          +
+        </Button>
+      </div>
+
+      <div>
+        <h4>EMA均线参数</h4>
+        <Space>
+          {emaParams.map((param, index) => (
+            <InputNumber
+              key={`ema-${index}`}
+              size="small"
+              min={1}
+              max={200}
+              value={param}
+              onChange={(value) => {
+                const newParams = [...emaParams]
+                newParams[index] = value
+                setEmaParams(newParams)
+              }}
+              style={{ width: 60 }}
+            />
+          ))}
+        </Space>
+        <Button
+          size="small"
+          style={{ marginLeft: 8 }}
+          onClick={() => setEmaParams([...emaParams, 20])}
+        >
+          +
+        </Button>
+      </div>
+    </div>
+  )
+
   return (
     <div style={{ width: '100%', height: '100%' }}>
-      <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between' }}>
-        <Space>
+      <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between', flexWrap: 'wrap' }}>
+        <Space wrap>
           <span style={{ fontWeight: 'bold', fontSize: '16px' }}>{symbol}</span>
           <Select
             value={timeframe}
@@ -115,10 +256,46 @@ const KlineChart = ({ symbol, initialTimeframe = '5m' }) => {
             <Option value="4h">4小时</Option>
             <Option value="1d">1天</Option>
           </Select>
+
+          {anomalyCount > 0 && (
+            <Tag color="red">检测到 {anomalyCount} 个价格异动点</Tag>
+          )}
         </Space>
-        {anomalyCount > 0 && (
-          <Tag color="red">检测到 {anomalyCount} 个价格异动点</Tag>
-        )}
+
+        <Space wrap>
+          {currentPrice > 0 && (
+            <Tag color="blue">当前价: ${currentPrice.toFixed(6)}</Tag>
+          )}
+
+          {hoverPrice && (
+            <Tag color={hoverChangePercent >= 0 ? 'green' : 'red'}>
+              相对涨跌: {hoverChangePercent >= 0 ? '+' : ''}{hoverChangePercent}%
+            </Tag>
+          )}
+
+          {currentCandle && (
+            <>
+              <Tag color={candleChangePercent >= 0 ? 'green' : 'red'}>
+                K线涨跌: {candleChangePercent >= 0 ? '+' : ''}{candleChangePercent}%
+              </Tag>
+              <Tag color="purple">
+                振幅: {amplitude}%
+              </Tag>
+            </>
+          )}
+
+          <Popover
+            content={settingsContent}
+            title="均线参数设置"
+            trigger="click"
+            open={settingsVisible}
+            onOpenChange={setSettingsVisible}
+          >
+            <Button size="small" icon={<SettingOutlined />}>
+              均线设置
+            </Button>
+          </Popover>
+        </Space>
       </Space>
 
       <Spin spinning={loading}>
