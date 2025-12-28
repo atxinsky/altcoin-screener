@@ -18,9 +18,23 @@ import base64
 import requests
 from check_api import check_binance_api
 import time
+import hashlib
+import uuid
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 
 # Optional: Set higher precision for Decimal context if calculations require it
 # getcontext().prec = 28
+
+# 数据库配置
+DATABASE_PATH = "/app/data/altcoin_screener.db"
+engine = create_engine(
+    f"sqlite:///{DATABASE_PATH}",
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool
+)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # --- Helper Functions ---
 
@@ -64,6 +78,325 @@ def safe_to_decimal(x):
     except (InvalidOperation, ValueError, TypeError, Exception) as e:
         print(f"警告: 无法将'{x}'转换为Decimal: {str(e)}")
         return Decimal(0)  # 转换失败返回0
+
+
+def aggregate_trades(df, time_window_seconds=60, price_tolerance_pct=1.0):
+    """
+    聚合时间相近、价格相似的订单成一笔交易
+
+    参数:
+        df: 交易数据DataFrame
+        time_window_seconds: 时间窗口(秒)，默认60秒
+        price_tolerance_pct: 价格容差百分比，默认1%
+
+    返回:
+        聚合后的DataFrame
+    """
+    if df.empty:
+        return df
+
+    # 确保数据按symbol、side、timestamp排序
+    df = df.sort_values(['symbol', 'side', 'timestamp']).copy()
+
+    aggregated_trades = []
+    current_group = []
+
+    for idx, row in df.iterrows():
+        if not current_group:
+            # 开始新的聚合组
+            current_group.append(row)
+        else:
+            last_trade = current_group[-1]
+
+            # 检查是否应该合并到当前组
+            same_symbol = row['symbol'] == last_trade['symbol']
+            same_side = row['side'] == last_trade['side']
+
+            # 时间差异
+            time_diff = (row['timestamp'] - last_trade['timestamp']).total_seconds()
+            within_time_window = time_diff <= time_window_seconds
+
+            # 价格差异 (转换为float比较)
+            try:
+                last_price = float(last_trade['price']) if last_trade['price'] else 0
+                current_price = float(row['price']) if row['price'] else 0
+
+                if last_price > 0:
+                    price_diff_pct = abs(current_price - last_price) / last_price * 100
+                    similar_price = price_diff_pct <= price_tolerance_pct
+                else:
+                    similar_price = True
+            except:
+                similar_price = True
+
+            # 如果满足聚合条件,添加到当前组
+            if same_symbol and same_side and within_time_window and similar_price:
+                current_group.append(row)
+            else:
+                # 聚合当前组并开始新组
+                aggregated_trades.append(aggregate_group(current_group))
+                current_group = [row]
+
+    # 处理最后一组
+    if current_group:
+        aggregated_trades.append(aggregate_group(current_group))
+
+    # 创建聚合后的DataFrame
+    if aggregated_trades:
+        result_df = pd.DataFrame(aggregated_trades)
+        # 保持原始列的顺序
+        result_df = result_df[df.columns]
+        return result_df
+    else:
+        return df
+
+
+def aggregate_group(trades):
+    """
+    聚合一组交易订单
+
+    参数:
+        trades: 交易记录列表
+
+    返回:
+        聚合后的交易字典
+    """
+    if len(trades) == 1:
+        return trades[0].to_dict()
+
+    # 使用第一笔交易作为基础
+    first_trade = trades[0]
+    aggregated = first_trade.to_dict()
+
+    # 聚合数量和金额
+    total_qty = Decimal(0)
+    total_amount = Decimal(0)
+    total_fee = Decimal(0)
+    total_pnl = Decimal(0)
+    total_realized_pnl = Decimal(0)
+
+    # 计算加权平均价格
+    weighted_price_sum = Decimal(0)
+    total_qty_for_price = Decimal(0)
+
+    for trade in trades:
+        qty = safe_to_decimal(trade['qty'])
+        price = safe_to_decimal(trade['price'])
+        amount = safe_to_decimal(trade['amount'])
+        fee = safe_to_decimal(trade['fee'])
+
+        total_qty += qty
+        total_amount += amount
+        total_fee += fee
+
+        # 加权价格计算
+        if qty > 0:
+            weighted_price_sum += price * qty
+            total_qty_for_price += qty
+
+        # 聚合PnL
+        if 'pnl' in trade and pd.notna(trade['pnl']):
+            total_pnl += safe_to_decimal(trade['pnl'])
+
+        if 'realized_pnl' in trade and pd.notna(trade['realized_pnl']):
+            total_realized_pnl += safe_to_decimal(trade['realized_pnl'])
+
+    # 计算加权平均价格
+    if total_qty_for_price > 0:
+        avg_price = weighted_price_sum / total_qty_for_price
+    else:
+        avg_price = safe_to_decimal(first_trade['price'])
+
+    # 更新聚合值
+    aggregated['qty'] = total_qty
+    aggregated['amount'] = total_amount
+    aggregated['fee'] = total_fee
+    aggregated['price'] = avg_price
+    aggregated['pnl'] = total_pnl
+
+    if 'realized_pnl' in aggregated:
+        aggregated['realized_pnl'] = total_realized_pnl
+
+    # 使用第一笔交易的时间戳
+    aggregated['timestamp'] = first_trade['timestamp']
+
+    # 添加聚合标记（可选，用于调试）
+    aggregated['aggregated_count'] = len(trades)
+
+    return aggregated
+
+
+def save_to_database(df, uploaded_files):
+    """
+    将导入的交易数据和分析结果保存到数据库
+
+    参数:
+        df: 处理后的交易数据DataFrame
+        uploaded_files: 上传的文件列表
+
+    返回:
+        import_id: 导入批次ID
+    """
+    try:
+        # 动态导入数据库模型
+        import sys
+        sys.path.append('/app/backend')
+        from database.models import ImportedTrade, ImportHistory, BacktestAnalysis
+        from database.database import Base
+
+        # 创建表（如果不存在）
+        Base.metadata.create_all(bind=engine)
+
+        # 生成导入ID
+        import_id = str(uuid.uuid4())[:8]
+
+        # 计算文件哈希
+        file_hash = hashlib.md5()
+        for uploaded_file in uploaded_files:
+            file_hash.update(uploaded_file.name.encode())
+        file_hash_str = file_hash.hexdigest()
+
+        db = SessionLocal()
+        try:
+            # 保存导入历史
+            import_history = ImportHistory(
+                import_id=import_id,
+                filename=", ".join([f.name for f in uploaded_files]),
+                file_hash=file_hash_str,
+                rows_imported=len(df),
+                date_range_start=df['timestamp'].min(),
+                date_range_end=df['timestamp'].max(),
+                symbols_count=df['symbol'].nunique(),
+                import_notes=f"聚合后交易数: {len(df)}"
+            )
+            db.add(import_history)
+
+            # 保存交易数据
+            for _, row in df.iterrows():
+                trade = ImportedTrade(
+                    import_id=import_id,
+                    trade_id=str(row.get('trade_id', '')),
+                    symbol=str(row['symbol']),
+                    side=str(row['side']),
+                    price=float(row['price']) if pd.notna(row['price']) else 0.0,
+                    quantity=float(row['qty']) if pd.notna(row['qty']) else 0.0,
+                    quote_quantity=float(row['amount']) if pd.notna(row['amount']) else 0.0,
+                    commission=float(row['fee']) if pd.notna(row['fee']) else 0.0,
+                    commission_asset=str(row.get('fee_currency', 'USDT')),
+                    timestamp=row['timestamp'],
+                    is_buyer=(row['side'].upper() == 'BUY'),
+                    is_maker=None,  # 这个信息可能不在数据中
+                    raw_data=row.to_dict()
+                )
+                db.add(trade)
+
+            db.commit()
+            st.success(f"✅ 数据已保存到数据库 (导入ID: {import_id})")
+            return import_id
+
+        except Exception as e:
+            db.rollback()
+            st.error(f"保存到数据库失败: {str(e)}")
+            import traceback
+            st.code(traceback.format_exc(), language="python")
+            return None
+        finally:
+            db.close()
+
+    except Exception as e:
+        st.error(f"数据库操作失败: {str(e)}")
+        import traceback
+        st.code(traceback.format_exc(), language="python")
+        return None
+
+
+def load_recent_analyses(limit=3):
+    """
+    加载最近的分析记录
+
+    参数:
+        limit: 返回的记录数量
+
+    返回:
+        分析记录列表
+    """
+    try:
+        import sys
+        sys.path.append('/app/backend')
+        from database.models import ImportHistory
+
+        db = SessionLocal()
+        try:
+            recent_imports = db.query(ImportHistory).order_by(
+                ImportHistory.imported_at.desc()
+            ).limit(limit).all()
+
+            return [{
+                'import_id': imp.import_id,
+                'filename': imp.filename,
+                'rows_imported': imp.rows_imported,
+                'date_range': f"{imp.date_range_start.strftime('%Y-%m-%d')} ~ {imp.date_range_end.strftime('%Y-%m-%d')}",
+                'symbols_count': imp.symbols_count,
+                'imported_at': imp.imported_at.strftime('%Y-%m-%d %H:%M:%S'),
+                'import_notes': imp.import_notes
+            } for imp in recent_imports]
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        st.warning(f"加载历史记录失败: {str(e)}")
+        return []
+
+
+def load_analysis_data(import_id):
+    """
+    根据import_id加载历史分析数据
+
+    参数:
+        import_id: 导入批次ID
+
+    返回:
+        DataFrame: 交易数据
+    """
+    try:
+        import sys
+        sys.path.append('/app/backend')
+        from database.models import ImportedTrade
+
+        db = SessionLocal()
+        try:
+            trades = db.query(ImportedTrade).filter(
+                ImportedTrade.import_id == import_id
+            ).order_by(ImportedTrade.timestamp).all()
+
+            if not trades:
+                return None
+
+            # 转换为DataFrame
+            data = []
+            for trade in trades:
+                data.append({
+                    'timestamp': trade.timestamp,
+                    'symbol': trade.symbol,
+                    'side': trade.side,
+                    'price': Decimal(str(trade.price)),
+                    'qty': Decimal(str(trade.quantity)),
+                    'amount': Decimal(str(trade.quote_quantity)),
+                    'fee': Decimal(str(trade.commission)),
+                    'fee_currency': trade.commission_asset,
+                    'pnl': Decimal(0)  # 需要重新计算
+                })
+
+            df = pd.DataFrame(data)
+            return df
+
+        finally:
+            db.close()
+
+    except Exception as e:
+        st.error(f"加载分析数据失败: {str(e)}")
+        return None
 
 
 # --- 函数：将OKX交易对格式转换为币安API可接受的格式 ---
@@ -1944,7 +2277,47 @@ if st.session_state.processed_data is not None:
 # ================================================
 if current_page == "upload":
     st.markdown('<h2 class="sub-header">数据上传与处理</h2>', unsafe_allow_html=True)
-    with st.expander("数据上传说明", expanded=True):
+
+    # 显示历史分析记录
+    st.markdown('<h3 class="sub-header">📊 最近的分析记录</h3>', unsafe_allow_html=True)
+    recent_analyses = load_recent_analyses(limit=3)
+
+    if recent_analyses:
+        cols = st.columns(len(recent_analyses))
+        for idx, (col, analysis) in enumerate(zip(cols, recent_analyses)):
+            with col:
+                st.markdown(f"""
+                <div style="border: 1px solid #ddd; padding: 15px; border-radius: 10px; background-color: #f9f9f9;">
+                    <h4 style="margin-top: 0;">分析 #{idx+1}</h4>
+                    <p><strong>文件:</strong> {analysis['filename'][:30]}...</p>
+                    <p><strong>交易数:</strong> {analysis['rows_imported']}</p>
+                    <p><strong>币种数:</strong> {analysis['symbols_count']}</p>
+                    <p><strong>日期:</strong> {analysis['date_range']}</p>
+                    <p><strong>导入时间:</strong> {analysis['imported_at']}</p>
+                    <p style="font-size: 0.9em; color: #666;">{analysis['import_notes']}</p>
+                </div>
+                """, unsafe_allow_html=True)
+
+                if st.button(f"加载分析 #{idx+1}", key=f"load_analysis_{analysis['import_id']}"):
+                    with st.spinner(f"正在加载分析数据..."):
+                        loaded_data = load_analysis_data(analysis['import_id'])
+                        if loaded_data is not None:
+                            st.session_state.processed_data = loaded_data
+                            st.session_state.symbols = sorted(loaded_data['symbol'].unique())
+                            min_date = loaded_data['timestamp'].min().date()
+                            max_date = loaded_data['timestamp'].max().date()
+                            st.session_state.date_range = (min_date, max_date)
+                            st.session_state.current_import_id = analysis['import_id']
+                            st.success(f"✅ 已加载分析数据 (ID: {analysis['import_id']})")
+                            st.rerun()
+                        else:
+                            st.error("加载失败，请重新上传数据")
+    else:
+        st.info("暂无历史分析记录，请上传交易数据开始分析")
+
+    st.markdown("---")
+
+    with st.expander("数据上传说明", expanded=False):
         st.markdown("""
         ### 上传说明
         1. 支持上传币安 **现货** 或 **U本位/币本位合约** 交易历史CSV文件。
@@ -2094,6 +2467,19 @@ if current_page == "upload":
                         numeric_cols_to_check = ['price', 'qty', 'amount', 'fee', 'pnl', 'realized_pnl']
                         for col in numeric_cols_to_check:
                             if col in merged_data.columns: merged_data[col] = merged_data[col].apply(safe_to_decimal)
+
+                        # 聚合交易数据：将时间相近的订单合并成一笔交易
+                        original_count = len(merged_data)
+                        st.info(f"正在聚合交易数据...原始订单数: {original_count}")
+                        merged_data = aggregate_trades(merged_data, time_window_seconds=60, price_tolerance_pct=1.0)
+                        aggregated_count = len(merged_data)
+                        st.success(f"交易数据聚合完成！原始订单: {original_count} → 聚合后交易: {aggregated_count} (减少{original_count - aggregated_count}条)")
+
+                        # 保存到数据库
+                        import_id = save_to_database(merged_data, uploaded_files)
+                        if import_id:
+                            st.session_state.current_import_id = import_id
+
                         st.session_state.processed_data = merged_data
                         st.session_state.symbols = sorted(merged_data['symbol'].unique())
                         min_date = merged_data['timestamp'].min().date(); max_date = merged_data['timestamp'].max().date()
