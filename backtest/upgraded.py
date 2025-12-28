@@ -2301,10 +2301,21 @@ if st.session_state.processed_data is not None:
     
     # 2. 日期范围选择（全局）
     min_date, max_date = st.session_state.date_range
+
+    # 确保默认值在有效范围内
+    default_start = max(min_date, st.session_state.global_selected_start_date)
+    default_end = min(max_date, st.session_state.global_selected_end_date)
+
+    # 如果默认值仍然无效，使用min_date和max_date
+    if default_start > max_date:
+        default_start = min_date
+    if default_end < min_date:
+        default_end = max_date
+
     global_selected_dates = st.sidebar.date_input(
-        "选择日期范围", 
-        value=(st.session_state.global_selected_start_date, st.session_state.global_selected_end_date),
-        min_value=min_date, 
+        "选择日期范围",
+        value=(default_start, default_end),
+        min_value=min_date,
         max_value=max_date,
         key="sidebar_dates"
     )
