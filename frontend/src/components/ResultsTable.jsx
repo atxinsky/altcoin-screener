@@ -152,6 +152,42 @@ const ResultsTable = () => {
       render: (price) => `$${price.toFixed(6)}`,
     },
     {
+      title: '5分钟涨幅',
+      dataIndex: 'price_change_5m',
+      key: 'price_change_5m',
+      width: 110,
+      sorter: (a, b) => (a.price_change_5m || 0) - (b.price_change_5m || 0),
+      render: (change) => (
+        <Tag color={change >= 0 ? 'green' : 'red'} style={{ fontWeight: 'bold' }}>
+          {change >= 0 ? '+' : ''}{(change || 0).toFixed(2)}%
+        </Tag>
+      ),
+    },
+    {
+      title: '15分钟涨幅',
+      dataIndex: 'price_change_15m',
+      key: 'price_change_15m',
+      width: 110,
+      sorter: (a, b) => (a.price_change_15m || 0) - (b.price_change_15m || 0),
+      render: (change) => (
+        <Tag color={change >= 0 ? 'green' : 'red'} style={{ fontWeight: 'bold' }}>
+          {change >= 0 ? '+' : ''}{(change || 0).toFixed(2)}%
+        </Tag>
+      ),
+    },
+    {
+      title: '1小时涨幅',
+      dataIndex: 'price_change_1h',
+      key: 'price_change_1h',
+      width: 110,
+      sorter: (a, b) => (a.price_change_1h || 0) - (b.price_change_1h || 0),
+      render: (change) => (
+        <Tag color={change >= 0 ? 'green' : 'red'} style={{ fontWeight: 'bold' }}>
+          {change >= 0 ? '+' : ''}{(change || 0).toFixed(2)}%
+        </Tag>
+      ),
+    },
+    {
       title: 'BTC比率变化',
       dataIndex: 'btc_ratio_change_pct',
       key: 'btc_ratio_change_pct',

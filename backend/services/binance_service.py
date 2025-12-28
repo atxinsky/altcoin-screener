@@ -20,16 +20,18 @@ class BinanceService:
         })
 
     def get_all_spot_symbols(self) -> List[str]:
-        """Get all spot trading symbols from Binance"""
+        """Get all ACTIVE spot trading symbols from Binance"""
         try:
             markets = self.exchange.load_markets()
-            # Filter for USDT spot pairs, exclude leveraged tokens
+            # Filter for USDT spot pairs that are ACTIVE, exclude leveraged tokens
             symbols = [
                 symbol for symbol, market in markets.items()
                 if market['quote'] == 'USDT'
                 and market['spot']
+                and market.get('active', False)  # 只返回活跃的交易对
                 and not any(x in symbol for x in ['UP/', 'DOWN/', 'BEAR/', 'BULL/'])
             ]
+            print(f"获取到 {len(symbols)} 个活跃的USDT现货交易对")
             return symbols
         except Exception as e:
             print(f"Error fetching symbols: {e}")

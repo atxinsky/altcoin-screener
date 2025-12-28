@@ -119,6 +119,18 @@ class ScreeningService:
         if df.empty:
             return None
 
+        # 检查数据是否是最新的（最后一根K线应该在1小时内）
+        from datetime import datetime, timedelta
+        latest_timestamp = df['timestamp'].iloc[-1]
+        if isinstance(latest_timestamp, str):
+            latest_timestamp = datetime.fromisoformat(latest_timestamp.replace('Z', '+00:00'))
+
+        # 如果最新数据超过1小时，说明该币种可能已下架或停止交易
+        time_diff = datetime.utcnow() - latest_timestamp.replace(tzinfo=None)
+        if time_diff > timedelta(hours=1):
+            print(f"跳过 {symbol}: 最新数据时间 {latest_timestamp}, 已超过1小时")
+            return None
+
         # Save K-line data to database
         self._save_kline_data(df, symbol, timeframe)
 
@@ -133,8 +145,21 @@ class ScreeningService:
         price_eth_ratio = current_price / eth_price
 
         # Calculate ratio changes (compare to 24h ago)
-        if len(df) >= 288:  # Assuming 5m timeframe, 288 candles = 24h
-            old_price = df['close'].iloc[-288]
+        # Determine lookback period based on timeframe (24 hours = 1440 minutes)
+        timeframe_minutes = {
+            '1m': 1,
+            '5m': 5,
+            '15m': 15,
+            '30m': 30,
+            '1h': 60,
+            '4h': 240,
+            '1d': 1440,
+        }
+        minutes = timeframe_minutes.get(timeframe, 5)  # Default to 5m
+        lookback_24h = int(1440 / minutes)  # Number of candles in 24 hours
+
+        if len(df) >= lookback_24h:
+            old_price = df['close'].iloc[-lookback_24h]
             btc_ratio_old = old_price / btc_price
             eth_ratio_old = old_price / eth_price
 
@@ -404,4 +429,9 @@ class ScreeningService:
             'volume_surge': result.volume_surge,
             'price_anomaly': result.price_anomaly,
             'volume_24h': result.volume_24h,
+            'volume_change_pct': result.volume_change_pct,
+            'price_change_5m': result.price_change_5m,
+            'price_change_15m': result.price_change_15m,
+            'price_change_1h': result.price_change_1h,
+            'price_change_4h': result.price_change_4h,
         }

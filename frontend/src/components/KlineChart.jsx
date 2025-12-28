@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Spin, Select, Space, Tag, message, InputNumber, Tooltip, Button, Popover } from 'antd'
-import { SettingOutlined } from '@ant-design/icons'
+import { Spin, Select, Space, Tag, message } from 'antd'
 import { getHistoricalData, getIndicators } from '../services/api'
 
 const { Option } = Select
@@ -8,6 +7,7 @@ const { Option } = Select
 const KlineChart = ({ symbol, initialTimeframe = '5m' }) => {
   const chartRef = useRef(null)
   const chartInstance = useRef(null)
+  const indicatorsCreated = useRef(false)
   const [loading, setLoading] = useState(true)
   const [timeframe, setTimeframe] = useState(initialTimeframe)
   const [anomalyCount, setAnomalyCount] = useState(0)
@@ -15,23 +15,20 @@ const KlineChart = ({ symbol, initialTimeframe = '5m' }) => {
   const [hoverPrice, setHoverPrice] = useState(null)
   const [currentCandle, setCurrentCandle] = useState(null)
 
-  // 均线参数设置
-  const [maParams, setMaParams] = useState([5, 10, 20, 60])
-  const [emaParams, setEmaParams] = useState([7, 14, 30])
-  const [settingsVisible, setSettingsVisible] = useState(false)
-
   useEffect(() => {
-    // Dynamically import klinecharts
+    let mounted = true
+
     const initChart = async () => {
       try {
         const klinecharts = await import('klinecharts')
 
-        if (chartRef.current && !chartInstance.current) {
-          // 初始化图表
+        if (chartRef.current && !chartInstance.current && mounted) {
+          // 创建图表实例（只创建一次）
           chartInstance.current = klinecharts.init(chartRef.current)
 
           // 设置十字光标监听
           chartInstance.current.subscribeAction('onCrosshairChange', (data) => {
+            if (!mounted) return
             if (data && data.dataIndex !== undefined && data.kLineData) {
               setHoverPrice(data.kLineData.close)
               setCurrentCandle(data.kLineData)
@@ -41,70 +38,65 @@ const KlineChart = ({ symbol, initialTimeframe = '5m' }) => {
             }
           })
 
-          // Load initial data
-          loadChartData()
-        }
+          // 只在第一次创建时添加指标
+          if (!indicatorsCreated.current) {
+            // VOL指标
+            chartInstance.current.createIndicator('VOL')
 
-        return () => {
-          if (chartInstance.current) {
-            klinecharts.dispose(chartRef.current)
-            chartInstance.current = null
+            // EMA指标 - 固定参数
+            chartInstance.current.createIndicator('EMA', false, {
+              id: 'candle_pane',
+              calcParams: [7, 14, 30, 52]
+            })
+
+            // MACD指标
+            chartInstance.current.createIndicator('MACD')
+
+            indicatorsCreated.current = true
           }
+
+          // 加载初始数据
+          loadChartData()
         }
       } catch (error) {
         console.error('Failed to load klinecharts:', error)
-        message.error('图表库加载失败')
-        setLoading(false)
+        if (mounted) {
+          message.error('图表库加载失败')
+          setLoading(false)
+        }
       }
     }
 
     initChart()
-  }, [])
+
+    // 清理函数
+    return () => {
+      mounted = false
+      if (chartInstance.current) {
+        try {
+          chartInstance.current.dispose()
+        } catch (e) {
+          console.error('Error disposing chart:', e)
+        }
+        chartInstance.current = null
+        indicatorsCreated.current = false
+      }
+    }
+  }, []) // 空依赖数组，只在mount时执行
 
   useEffect(() => {
+    // 当symbol或timeframe变化时，只更新数据，不重建图表
     if (chartInstance.current) {
       loadChartData()
     }
   }, [symbol, timeframe])
 
-  useEffect(() => {
-    if (chartInstance.current) {
-      updateIndicators()
-    }
-  }, [maParams, emaParams])
-
-  const updateIndicators = () => {
-    if (!chartInstance.current) return
-
-    // 移除所有旧指标
-    chartInstance.current.removeIndicator({ name: 'MA' })
-    chartInstance.current.removeIndicator({ name: 'EMA' })
-    chartInstance.current.removeIndicator({ name: 'VOL' })
-
-    // 添加MA指标
-    chartInstance.current.createIndicator('MA', false, {
-      id: 'candle_pane',
-      calcParams: maParams
-    })
-
-    // 添加EMA指标
-    chartInstance.current.createIndicator('EMA', false, {
-      id: 'candle_pane',
-      calcParams: emaParams
-    })
-
-    // 添加成交量指标（只添加一次）
-    chartInstance.current.createIndicator('VOL')
-  }
-
   const loadChartData = async () => {
     setLoading(true)
     try {
-      // Fetch historical K-line data
       const response = await getHistoricalData(symbol, timeframe, 7)
 
       if (response.data && response.data.length > 0) {
-        // Transform data to klinecharts format
         const chartData = response.data.map(item => ({
           timestamp: new Date(item.timestamp).getTime(),
           open: item.open,
@@ -114,31 +106,24 @@ const KlineChart = ({ symbol, initialTimeframe = '5m' }) => {
           volume: item.volume
         }))
 
-        // Apply data to chart
         if (chartInstance.current) {
+          // 使用applyNewData更新数据，不重新创建指标
           chartInstance.current.applyNewData(chartData)
 
-          // 设置当前价格
           const lastCandle = chartData[chartData.length - 1]
           setCurrentPrice(lastCandle.close)
 
-          // 更新指标
-          updateIndicators()
-
-          // 自动缩放：先滚动到最新数据，然后重置缩放
+          // 自动缩放
           setTimeout(() => {
             if (chartInstance.current) {
-              // 滚动到最新数据
               chartInstance.current.scrollToRealTime()
-              // 重置缩放比例
               chartInstance.current.setZoomEnabled(true)
-              // 自动适配Y轴范围
               chartInstance.current.setPriceVolumePrecision(6, 2)
             }
           }, 100)
         }
 
-        // Get indicators data for anomaly detection
+        // 获取异常点数量
         try {
           const indicatorsResponse = await getIndicators(symbol, timeframe)
           if (indicatorsResponse.anomaly_count !== undefined) {
@@ -152,7 +137,12 @@ const KlineChart = ({ symbol, initialTimeframe = '5m' }) => {
       }
     } catch (error) {
       console.error('Failed to load chart data:', error)
-      message.error('加载图表数据失败: ' + error.message)
+
+      if (error.response && error.response.status === 404) {
+        message.warning(`${symbol} 可能已从币安下架，无法获取K线数据`)
+      } else {
+        message.error('加载图表数据失败: ' + error.message)
+      }
     } finally {
       setLoading(false)
     }
@@ -162,90 +152,25 @@ const KlineChart = ({ symbol, initialTimeframe = '5m' }) => {
     setTimeframe(value)
   }
 
-  // 计算涨跌幅
   const calculateChangePercent = (price1, price2) => {
     if (!price1 || !price2) return 0
     return ((price2 - price1) / price1 * 100).toFixed(2)
   }
 
-  // 计算振幅
   const calculateAmplitude = (candle) => {
     if (!candle) return 0
     return ((candle.high - candle.low) / candle.low * 100).toFixed(2)
   }
 
-  // K线涨跌幅
   const candleChangePercent = currentCandle
     ? calculateChangePercent(currentCandle.open, currentCandle.close)
     : 0
 
-  // 当前价格与鼠标位置涨跌幅
   const hoverChangePercent = hoverPrice
     ? calculateChangePercent(currentPrice, hoverPrice)
     : 0
 
-  // 振幅
   const amplitude = currentCandle ? calculateAmplitude(currentCandle) : 0
-
-  const settingsContent = (
-    <div style={{ width: 300 }}>
-      <div style={{ marginBottom: 16 }}>
-        <h4>MA均线参数</h4>
-        <Space>
-          {maParams.map((param, index) => (
-            <InputNumber
-              key={`ma-${index}`}
-              size="small"
-              min={1}
-              max={200}
-              value={param}
-              onChange={(value) => {
-                const newParams = [...maParams]
-                newParams[index] = value
-                setMaParams(newParams)
-              }}
-              style={{ width: 60 }}
-            />
-          ))}
-        </Space>
-        <Button
-          size="small"
-          style={{ marginLeft: 8 }}
-          onClick={() => setMaParams([...maParams, 30])}
-        >
-          +
-        </Button>
-      </div>
-
-      <div>
-        <h4>EMA均线参数</h4>
-        <Space>
-          {emaParams.map((param, index) => (
-            <InputNumber
-              key={`ema-${index}`}
-              size="small"
-              min={1}
-              max={200}
-              value={param}
-              onChange={(value) => {
-                const newParams = [...emaParams]
-                newParams[index] = value
-                setEmaParams(newParams)
-              }}
-              style={{ width: 60 }}
-            />
-          ))}
-        </Space>
-        <Button
-          size="small"
-          style={{ marginLeft: 8 }}
-          onClick={() => setEmaParams([...emaParams, 20])}
-        >
-          +
-        </Button>
-      </div>
-    </div>
-  )
 
   return (
     <div style={{ width: '100%', height: '100%' }}>
@@ -293,18 +218,6 @@ const KlineChart = ({ symbol, initialTimeframe = '5m' }) => {
               </Tag>
             </>
           )}
-
-          <Popover
-            content={settingsContent}
-            title="均线参数设置"
-            trigger="click"
-            open={settingsVisible}
-            onOpenChange={setSettingsVisible}
-          >
-            <Button size="small" icon={<SettingOutlined />}>
-              均线设置
-            </Button>
-          </Popover>
         </Space>
       </Space>
 

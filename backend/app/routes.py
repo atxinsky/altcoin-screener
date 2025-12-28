@@ -271,29 +271,30 @@ async def get_indicators(
             'symbol': symbol,
             'timeframe': timeframe,
             'timestamp': latest['timestamp'].isoformat(),
-            'price': latest['close'],
-            'sma_20': latest.get('sma_20'),
-            'ema_7': latest.get('ema_7'),
-            'ema_14': latest.get('ema_14'),
-            'ema_30': latest.get('ema_30'),
-            'ema_52': latest.get('ema_52'),
-            'macd': latest.get('macd'),
-            'macd_signal': latest.get('macd_signal'),
-            'macd_histogram': latest.get('macd_histogram'),
-            'rsi': latest.get('rsi'),
-            'bb_upper': latest.get('bb_upper'),
-            'bb_middle': latest.get('bb_middle'),
-            'bb_lower': latest.get('bb_lower'),
-            'volume_sma_20': latest.get('volume_sma_20'),
-            'above_sma': indicator_service.check_price_above_sma(df),
-            'macd_golden_cross': indicator_service.check_macd_golden_cross(df),
-            'above_all_ema': indicator_service.check_price_above_all_ema(df),
-            'technical_score': indicator_service.calculate_technical_score(df),
+            'price': float(latest['close']),
+            'sma_20': float(latest.get('sma_20')) if latest.get('sma_20') is not None else None,
+            'ema_7': float(latest.get('ema_7')) if latest.get('ema_7') is not None else None,
+            'ema_14': float(latest.get('ema_14')) if latest.get('ema_14') is not None else None,
+            'ema_30': float(latest.get('ema_30')) if latest.get('ema_30') is not None else None,
+            'ema_52': float(latest.get('ema_52')) if latest.get('ema_52') is not None else None,
+            'macd': float(latest.get('macd')) if latest.get('macd') is not None else None,
+            'macd_signal': float(latest.get('macd_signal')) if latest.get('macd_signal') is not None else None,
+            'macd_histogram': float(latest.get('macd_histogram')) if latest.get('macd_histogram') is not None else None,
+            'rsi': float(latest.get('rsi')) if latest.get('rsi') is not None else None,
+            'bb_upper': float(latest.get('bb_upper')) if latest.get('bb_upper') is not None else None,
+            'bb_middle': float(latest.get('bb_middle')) if latest.get('bb_middle') is not None else None,
+            'bb_lower': float(latest.get('bb_lower')) if latest.get('bb_lower') is not None else None,
+            'volume_sma_20': float(latest.get('volume_sma_20')) if latest.get('volume_sma_20') is not None else None,
+            'above_sma': bool(indicator_service.check_price_above_sma(df)),
+            'macd_golden_cross': bool(indicator_service.check_macd_golden_cross(df)),
+            'above_all_ema': bool(indicator_service.check_price_above_all_ema(df)),
+            'technical_score': float(indicator_service.calculate_technical_score(df)),
         }
 
         return {
             "success": True,
-            "indicators": indicators
+            "indicators": indicators,
+            "anomaly_count": 0  # Placeholder for anomaly detection
         }
 
     except HTTPException:
@@ -350,6 +351,18 @@ async def get_historical_rankings(
         from datetime import datetime, timedelta
         from sqlalchemy import func
 
+        # 获取当前币安现货市场的所有USDT交易对
+        try:
+            binance = BinanceService()
+            active_symbols = set(binance.get_all_spot_symbols())
+            print(f"获取到 {len(active_symbols)} 个活跃的USDT交易对")
+        except Exception as e:
+            print(f"获取币安交易对失败: {e}")
+            import traceback
+            traceback.print_exc()
+            # 如果获取失败，返回空集合，这样会过滤掉所有币种（安全起见）
+            active_symbols = set()
+
         # Calculate the cutoff date
         cutoff_date = datetime.utcnow() - timedelta(days=days)
 
@@ -367,19 +380,25 @@ async def get_historical_rankings(
             ScreeningResult.symbol
         ).order_by(
             func.avg(ScreeningResult.total_score).desc()
-        ).limit(limit).all()
+        ).all()
 
+        # 只保留当前在币安现货市场存在的币种
         rankings = []
-        for idx, row in enumerate(results, 1):
-            rankings.append({
-                'rank': idx,
-                'symbol': row.symbol,
-                'avg_score': round(row.avg_score, 2),
-                'max_score': round(row.max_score, 2),
-                'min_score': round(row.min_score, 2),
-                'appearance_count': row.appearance_count,
-                'last_seen': row.last_seen.isoformat()
-            })
+        rank = 1
+        for row in results:
+            if row.symbol in active_symbols:
+                rankings.append({
+                    'rank': rank,
+                    'symbol': row.symbol,
+                    'avg_score': round(row.avg_score, 2),
+                    'max_score': round(row.max_score, 2),
+                    'min_score': round(row.min_score, 2),
+                    'appearance_count': row.appearance_count,
+                    'last_seen': row.last_seen.isoformat()
+                })
+                rank += 1
+                if rank > limit:
+                    break
 
         return {
             "success": True,
@@ -734,7 +753,7 @@ async def get_top_gainers(
         binance = BinanceService()
 
         # Get all USDT pairs
-        symbols = binance.get_usdt_symbols()
+        symbols = binance.get_all_spot_symbols()
         if not symbols:
             return {"success": True, "count": 0, "results": []}
 
@@ -770,11 +789,11 @@ async def get_top_gainers(
                 gainers.append({
                     'symbol': symbol,
                     'timeframe': timeframe,
-                    'current_price': current_close,
-                    'price_change_pct': price_change_pct,
-                    'volume_24h': ticker.get('quoteVolume', 0),
-                    'high_24h': ticker.get('high', 0),
-                    'low_24h': ticker.get('low', 0)
+                    'current_price': float(current_close),
+                    'price_change_pct': float(price_change_pct),
+                    'volume_24h': float(ticker.get('quoteVolume', 0)),
+                    'high_24h': float(ticker.get('high', 0)),
+                    'low_24h': float(ticker.get('low', 0))
                 })
             except Exception as e:
                 print(f"Error fetching {symbol}: {e}")
