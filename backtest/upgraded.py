@@ -21,8 +21,7 @@ import time
 import hashlib
 import uuid
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Boolean, JSON, Index
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.pool import StaticPool
 from datetime import datetime as dt
 
@@ -313,6 +312,17 @@ def save_to_database(df, uploaded_files):
 
             # 保存交易数据
             for _, row in df.iterrows():
+                # 转换raw_data为可JSON序列化的格式
+                raw_dict = {}
+                for key, value in row.items():
+                    if pd.notna(value):
+                        if isinstance(value, Decimal):
+                            raw_dict[key] = float(value)
+                        elif isinstance(value, (pd.Timestamp, dt)):
+                            raw_dict[key] = value.isoformat()
+                        else:
+                            raw_dict[key] = str(value)
+
                 trade = ImportedTrade(
                     import_id=import_id,
                     trade_id=str(row.get('trade_id', '')),
@@ -326,7 +336,7 @@ def save_to_database(df, uploaded_files):
                     timestamp=row['timestamp'],
                     is_buyer=(row['side'].upper() == 'BUY'),
                     is_maker=None,  # 这个信息可能不在数据中
-                    raw_data=row.to_dict()
+                    raw_data=raw_dict
                 )
                 db.add(trade)
 
