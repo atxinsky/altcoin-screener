@@ -79,6 +79,7 @@ const KlineChart = ({ symbol, initialTimeframe = '5m' }) => {
     // 移除所有旧指标
     chartInstance.current.removeIndicator({ name: 'MA' })
     chartInstance.current.removeIndicator({ name: 'EMA' })
+    chartInstance.current.removeIndicator({ name: 'VOL' })
 
     // 添加MA指标
     chartInstance.current.createIndicator('MA', false, {
@@ -92,7 +93,7 @@ const KlineChart = ({ symbol, initialTimeframe = '5m' }) => {
       calcParams: emaParams
     })
 
-    // 添加成交量指标
+    // 添加成交量指标（只添加一次）
     chartInstance.current.createIndicator('VOL')
   }
 
@@ -124,8 +125,17 @@ const KlineChart = ({ symbol, initialTimeframe = '5m' }) => {
           // 更新指标
           updateIndicators()
 
-          // 自动缩放Y轴以适应数据
-          chartInstance.current.zoomAtDataIndex(chartData.length - 1, 1)
+          // 自动缩放：先滚动到最新数据，然后重置缩放
+          setTimeout(() => {
+            if (chartInstance.current) {
+              // 滚动到最新数据
+              chartInstance.current.scrollToRealTime()
+              // 重置缩放比例
+              chartInstance.current.setZoomEnabled(true)
+              // 自动适配Y轴范围
+              chartInstance.current.setPriceVolumePrecision(6, 2)
+            }
+          }, 100)
         }
 
         // Get indicators data for anomaly detection

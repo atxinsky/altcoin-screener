@@ -85,15 +85,16 @@ const ScreeningPanel = ({ onStatsUpdate, onResultsUpdate }) => {
       <Row gutter={16}>
         <Col xs={24} sm={12} md={6}>
           <Form.Item
-            label="时间周期"
+            label={screenMode === 'gainers' ? '涨幅计算周期' : '时间周期'}
             name="timeframe"
             rules={[{ required: true, message: '请选择时间周期' }]}
+            tooltip={screenMode === 'gainers' ? '选择计算涨幅的时间周期（如5分钟涨幅、15分钟涨幅）' : null}
           >
             <Select>
-              <Option value="5m">5分钟</Option>
-              <Option value="15m">15分钟</Option>
-              <Option value="1h">1小时</Option>
-              <Option value="4h">4小时</Option>
+              <Option value="5m">5分钟{screenMode === 'gainers' ? '涨幅' : ''}</Option>
+              <Option value="15m">15分钟{screenMode === 'gainers' ? '涨幅' : ''}</Option>
+              <Option value="1h">1小时{screenMode === 'gainers' ? '涨幅' : ''}</Option>
+              {screenMode === 'regular' && <Option value="4h">4小时</Option>}
             </Select>
           </Form.Item>
         </Col>
