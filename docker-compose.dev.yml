@@ -1,0 +1,54 @@
+version: '3.8'
+
+# Development mode with hot reload
+services:
+  # Backend API Service (Development mode)
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: altcoin-screener-backend-dev
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mount source code for hot reload
+      - ./backend:/app/backend
+      - ./run_backend.py:/app/run_backend.py
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./charts:/app/charts
+      - ./.env:/app/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DEV_MODE=1
+    command: uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - screener-network
+
+  # Monitor Service (Development mode)
+  monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile.monitor
+    container_name: altcoin-screener-monitor-dev
+    restart: unless-stopped
+    volumes:
+      # Mount source code for hot reload
+      - ./backend:/app/backend
+      - ./run_monitor.py:/app/run_monitor.py
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./charts:/app/charts
+      - ./.env:/app/.env
+    environment:
+      - PYTHONUNBUFFERED=1
+      - DEV_MODE=1
+    networks:
+      - screener-network
+    depends_on:
+      - backend
+
+networks:
+  screener-network:
+    driver: bridge

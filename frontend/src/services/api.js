@@ -1,0 +1,155 @@
+import axios from 'axios'
+
+const API_BASE_URL = '/api'
+
+const api = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 300000, // 5 minutes for screening
+  headers: {
+    'Content-Type': 'application/json',
+  },
+})
+
+// Market endpoints
+export const getMarketOverview = async () => {
+  const response = await api.get('/market-overview')
+  return response.data
+}
+
+export const getSymbols = async () => {
+  const response = await api.get('/symbols')
+  return response.data
+}
+
+// Screening endpoints
+export const screenAltcoins = async (params) => {
+  const response = await api.post('/screen', params)
+  return response.data
+}
+
+export const getTopOpportunities = async (limit = 20, minScore = 60) => {
+  const response = await api.get('/top-opportunities', {
+    params: { limit, min_score: minScore }
+  })
+  return response.data
+}
+
+// Chart endpoints
+export const generateChart = async (symbol, timeframe = '5m', showIndicators = true) => {
+  const response = await api.post('/chart', {
+    symbol,
+    timeframe,
+    show_indicators: showIndicators
+  })
+  return response.data
+}
+
+// Data endpoints
+export const getHistoricalData = async (symbol, timeframe = '5m', days = 7) => {
+  const response = await api.get(`/historical/${symbol}`, {
+    params: { timeframe, days }
+  })
+  return response.data
+}
+
+export const getIndicators = async (symbol, timeframe = '5m') => {
+  const response = await api.get(`/indicators/${symbol}`, {
+    params: { timeframe }
+  })
+  return response.data
+}
+
+// Stats endpoints
+export const getStats = async () => {
+  const response = await api.get('/stats')
+  return response.data
+}
+
+// Historical rankings endpoints
+export const getHistoricalRankings = async (days = 3, limit = 20) => {
+  const response = await api.get('/history/rankings', {
+    params: { days, limit }
+  })
+  return response.data
+}
+
+export const getSymbolHistory = async (symbol, days = 7) => {
+  const response = await api.get(`/history/symbol/${symbol}`, {
+    params: { days }
+  })
+  return response.data
+}
+
+export const getRecentScreenings = async (hours = 24, minScore = 0) => {
+  const response = await api.get('/history/recent', {
+    params: { hours, min_score: minScore }
+  })
+  return response.data
+}
+
+// Trading endpoints
+export const createMarketOrder = async (symbol, side, quantity, notes = null) => {
+  const response = await api.post('/trade/market', {
+    symbol,
+    side,
+    quantity,
+    notes
+  })
+  return response.data
+}
+
+export const createLimitOrder = async (symbol, side, quantity, price, notes = null) => {
+  const response = await api.post('/trade/limit', {
+    symbol,
+    side,
+    quantity,
+    price,
+    notes
+  })
+  return response.data
+}
+
+export const cancelOrder = async (orderId) => {
+  const response = await api.delete(`/trade/${orderId}`)
+  return response.data
+}
+
+export const getOrderHistory = async (symbol = null, limit = 50) => {
+  const response = await api.get('/trade/history', {
+    params: { symbol, limit }
+  })
+  return response.data
+}
+
+export const getBalance = async (asset = 'USDT') => {
+  const response = await api.get('/trade/balance', {
+    params: { asset }
+  })
+  return response.data
+}
+
+export const getAllBalances = async () => {
+  const response = await api.get('/trade/balances')
+  return response.data
+}
+
+// Watchlist endpoints
+export const addToWatchlist = async (symbol, notes = null) => {
+  const response = await api.post('/watchlist', {
+    symbol,
+    notes
+  })
+  return response.data
+}
+
+export const getWatchlist = async () => {
+  const response = await api.get('/watchlist')
+  return response.data
+}
+
+export const removeFromWatchlist = async (symbol) => {
+  const response = await api.delete(`/watchlist/${symbol}`)
+  return response.data
+}
+
+export default api

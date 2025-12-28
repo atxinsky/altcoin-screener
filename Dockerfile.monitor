@@ -1,0 +1,38 @@
+# Monitor Service Dockerfile - 使用Python 3.11
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# 使用阿里云镜像源加速（解决国内网络问题）
+RUN sed -i 's/deb.debian.org/mirrors.aliyun.com/g' /etc/apt/sources.list.d/debian.sources && \
+    sed -i 's|security.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements
+COPY backend/requirements.txt .
+
+# 使用清华镜像源安装Python包
+RUN pip install --no-cache-dir \
+    -i https://pypi.tuna.tsinghua.edu.cn/simple \
+    --trusted-host pypi.tuna.tsinghua.edu.cn \
+    -r requirements.txt
+
+# Copy application code
+COPY backend/ ./backend/
+COPY run_monitor.py .
+COPY .env* ./
+
+# Create directories
+RUN mkdir -p /app/data /app/logs /app/charts
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
+
+# Run the monitor service
+CMD ["python", "run_monitor.py"]

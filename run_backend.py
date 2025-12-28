@@ -1,0 +1,26 @@
+#!/usr/bin/env python
+"""
+启动后端API服务器
+"""
+import uvicorn
+from backend.app.main import app
+from backend.config import settings
+
+if __name__ == "__main__":
+    print("""
+    ╔═══════════════════════════════════════════════════════╗
+    ║     Binance Altcoin Screener - Backend Server        ║
+    ║                                                       ║
+    ║  API Server: http://localhost:8000                    ║
+    ║  API Docs:   http://localhost:8000/docs               ║
+    ║                                                       ║
+    ║  Press Ctrl+C to stop                                 ║
+    ╚═══════════════════════════════════════════════════════╝
+    """)
+
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8000,
+        log_level=settings.LOG_LEVEL.lower()
+    )
