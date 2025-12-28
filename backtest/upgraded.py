@@ -20,23 +20,70 @@ from check_api import check_binance_api
 import time
 import hashlib
 import uuid
-
-# 暂时禁用数据库功能
-# from sqlalchemy import create_engine
-# from sqlalchemy.orm import sessionmaker
-# from sqlalchemy.pool import StaticPool
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Boolean, JSON, Index
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
+from datetime import datetime as dt
 
 # Optional: Set higher precision for Decimal context if calculations require it
 # getcontext().prec = 28
 
-# 数据库配置（暂时禁用）
-# DATABASE_PATH = "/app/data/altcoin_screener.db"
-# engine = create_engine(
-#     f"sqlite:///{DATABASE_PATH}",
-#     connect_args={"check_same_thread": False},
-#     poolclass=StaticPool
-# )
-# SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# 数据库配置
+DATABASE_PATH = "/app/data/altcoin_screener.db"
+engine = create_engine(
+    f"sqlite:///{DATABASE_PATH}",
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool
+)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+# 数据库模型定义
+class ImportedTrade(Base):
+    """导入的交易数据"""
+    __tablename__ = "imported_trades"
+
+    id = Column(Integer, primary_key=True, index=True)
+    import_id = Column(String, index=True, nullable=False)
+    trade_id = Column(String, index=True)
+    symbol = Column(String, index=True, nullable=False)
+    side = Column(String, nullable=False)
+    price = Column(Float, nullable=False)
+    quantity = Column(Float, nullable=False)
+    quote_quantity = Column(Float, nullable=False)
+    commission = Column(Float)
+    commission_asset = Column(String)
+    timestamp = Column(DateTime, index=True, nullable=False)
+    is_buyer = Column(Boolean)
+    is_maker = Column(Boolean)
+    raw_data = Column(JSON)
+    imported_at = Column(DateTime, default=dt.utcnow)
+
+    __table_args__ = (
+        Index('idx_import_symbol_timestamp', 'import_id', 'symbol', 'timestamp'),
+    )
+
+class ImportHistory(Base):
+    """导入历史记录"""
+    __tablename__ = "import_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    import_id = Column(String, index=True, nullable=False, unique=True)
+    filename = Column(String, nullable=False)
+    file_hash = Column(String)
+    rows_imported = Column(Integer)
+    date_range_start = Column(DateTime)
+    date_range_end = Column(DateTime)
+    symbols_count = Column(Integer)
+    import_notes = Column(String)
+    imported_at = Column(DateTime, default=dt.utcnow, index=True)
+
+# 创建所有表
+try:
+    Base.metadata.create_all(bind=engine)
+except Exception as e:
+    print(f"创建数据库表时出错: {e}")
 
 # --- Helper Functions ---
 
@@ -232,15 +279,6 @@ def save_to_database(df, uploaded_files):
     """
     将导入的交易数据和分析结果保存到数据库
 
-    暂时禁用此功能，等待完整集成
-    """
-    st.warning("数据库保存功能暂时禁用，数据仅保存在会话中")
-    return None
-
-def save_to_database_disabled(df, uploaded_files):
-    """
-    将导入的交易数据和分析结果保存到数据库
-
     参数:
         df: 处理后的交易数据DataFrame
         uploaded_files: 上传的文件列表
@@ -249,15 +287,6 @@ def save_to_database_disabled(df, uploaded_files):
         import_id: 导入批次ID
     """
     try:
-        # 动态导入数据库模型
-        import sys
-        sys.path.append('/app/backend')
-        from database.models import ImportedTrade, ImportHistory, BacktestAnalysis
-        from database.database import Base
-
-        # 创建表（如果不存在）
-        Base.metadata.create_all(bind=engine)
-
         # 生成导入ID
         import_id = str(uuid.uuid4())[:8]
 
@@ -325,15 +354,6 @@ def load_recent_analyses(limit=3):
     """
     加载最近的分析记录
 
-    暂时禁用此功能
-    """
-    # 暂时返回空列表，等待完整集成
-    return []
-
-def load_recent_analyses_disabled(limit=3):
-    """
-    加载最近的分析记录
-
     参数:
         limit: 返回的记录数量
 
@@ -341,10 +361,6 @@ def load_recent_analyses_disabled(limit=3):
         分析记录列表
     """
     try:
-        import sys
-        sys.path.append('/app/backend')
-        from database.models import ImportHistory
-
         db = SessionLocal()
         try:
             recent_imports = db.query(ImportHistory).order_by(
@@ -380,10 +396,6 @@ def load_analysis_data(import_id):
         DataFrame: 交易数据
     """
     try:
-        import sys
-        sys.path.append('/app/backend')
-        from database.models import ImportedTrade
-
         db = SessionLocal()
         try:
             trades = db.query(ImportedTrade).filter(
