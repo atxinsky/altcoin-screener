@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react'
 import { Layout, Typography, Space, Card, Row, Col, Spin, Menu } from 'antd'
-import { RocketOutlined, LineChartOutlined, BarChartOutlined } from '@ant-design/icons'
+import { RocketOutlined, LineChartOutlined, BarChartOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import ScreeningPanel from './components/ScreeningPanel'
 import ResultsTable from './components/ResultsTable'
 import MarketOverview from './components/MarketOverview'
 import StatsPanel from './components/StatsPanel'
 import TradingPanel from './components/TradingPanel'
 import HistoricalRankings from './components/HistoricalRankings'
+import SimTradingPanel from './components/SimTradingPanel'
 import { getMarketOverview, getStats } from './services/api'
 
 const { Header, Content } = Layout
@@ -48,6 +49,11 @@ function App() {
       key: 'backtest',
       icon: <BarChartOutlined />,
       label: '交易回测分析',
+    },
+    {
+      key: 'sim-trading',
+      icon: <ThunderboltOutlined />,
+      label: '模拟交易',
     },
   ]
 
@@ -126,6 +132,8 @@ function App() {
               <ResultsTable />
             </Space>
           )
+        ) : currentView === 'sim-trading' ? (
+          <SimTradingPanel />
         ) : (
           <div style={{
             width: '100%',

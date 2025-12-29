@@ -259,3 +259,155 @@ class ImportHistory(Base):
     symbols_count = Column(Integer)
     import_notes = Column(String)
     imported_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+class SimAccount(Base):
+    """Simulated trading account"""
+    __tablename__ = "sim_accounts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    account_name = Column(String, index=True, nullable=False)
+    initial_balance = Column(Float, nullable=False, default=10000.0)
+    current_balance = Column(Float, nullable=False)  # Available balance
+    frozen_balance = Column(Float, default=0.0)  # Balance in open positions
+    total_equity = Column(Float, nullable=False)  # current_balance + position value
+
+    # Trading statistics
+    total_trades = Column(Integer, default=0)
+    winning_trades = Column(Integer, default=0)
+    losing_trades = Column(Integer, default=0)
+    total_pnl = Column(Float, default=0.0)
+    total_commission = Column(Float, default=0.0)
+
+    # Auto trading settings
+    auto_trading_enabled = Column(Boolean, default=False)
+    max_positions = Column(Integer, default=5)
+    position_size_pct = Column(Float, default=2.0)  # % of total equity per position
+
+    # Strategy config
+    entry_score_min = Column(Float, default=75.0)
+    entry_technical_min = Column(Float, default=60.0)
+    stop_loss_pct = Column(Float, default=3.0)
+    take_profit_levels = Column(JSON, default=[6.0, 9.0, 12.0])  # Multiple TP levels
+
+    # Status
+    is_active = Column(Boolean, default=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        Index('idx_simaccount_active', 'is_active', 'auto_trading_enabled'),
+    )
+
+
+class SimPosition(Base):
+    """Simulated open positions"""
+    __tablename__ = "sim_positions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    account_id = Column(Integer, index=True, nullable=False)  # FK to sim_accounts
+    symbol = Column(String, index=True, nullable=False)
+
+    # Entry details
+    entry_price = Column(Float, nullable=False)
+    entry_time = Column(DateTime, nullable=False, index=True)
+    quantity = Column(Float, nullable=False)
+    entry_value = Column(Float, nullable=False)  # Total value at entry
+    entry_score = Column(Float)  # Screening score at entry
+
+    # Current status
+    current_price = Column(Float)
+    current_value = Column(Float)
+    unrealized_pnl = Column(Float, default=0.0)
+    unrealized_pnl_pct = Column(Float, default=0.0)
+
+    # Stop loss / Take profit
+    stop_loss_price = Column(Float)
+    take_profit_prices = Column(JSON)  # List of TP prices
+    remaining_quantity = Column(Float, nullable=False)  # For partial exits
+
+    # Exit tracking
+    partial_exits = Column(JSON, default=[])  # List of {price, quantity, time}
+    is_closed = Column(Boolean, default=False, index=True)
+    close_time = Column(DateTime)
+    close_reason = Column(String)  # 'STOP_LOSS', 'TAKE_PROFIT', 'MANUAL', 'TIME_STOP'
+
+    # Metadata
+    entry_signals = Column(JSON)  # Store entry signals for analysis
+    notes = Column(String)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        Index('idx_simposition_account_symbol', 'account_id', 'symbol', 'is_closed'),
+    )
+
+
+class SimTrade(Base):
+    """Simulated trade history"""
+    __tablename__ = "sim_trades"
+
+    id = Column(Integer, primary_key=True, index=True)
+    account_id = Column(Integer, index=True, nullable=False)
+    position_id = Column(Integer, index=True)  # Link to position
+    symbol = Column(String, index=True, nullable=False)
+
+    # Trade details
+    side = Column(String, nullable=False)  # 'BUY' or 'SELL'
+    price = Column(Float, nullable=False)
+    quantity = Column(Float, nullable=False)
+    value = Column(Float, nullable=False)  # price * quantity
+    commission = Column(Float, default=0.0)
+    commission_asset = Column(String, default='USDT')
+
+    # P&L (for closing trades)
+    pnl = Column(Float)
+    pnl_pct = Column(Float)
+
+    # Context
+    trade_type = Column(String)  # 'ENTRY', 'PARTIAL_EXIT', 'FULL_EXIT'
+    exit_reason = Column(String)  # 'STOP_LOSS', 'TAKE_PROFIT_1', 'TAKE_PROFIT_2', etc.
+
+    # Signals and scores
+    entry_score = Column(Float)
+    signals = Column(JSON)  # Entry/exit signals
+
+    # Timestamps
+    trade_time = Column(DateTime, nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Metadata
+    notes = Column(String)
+
+    __table_args__ = (
+        Index('idx_simtrade_account_time', 'account_id', 'trade_time'),
+        Index('idx_simtrade_symbol_time', 'symbol', 'trade_time'),
+    )
+
+
+class AutoTradingLog(Base):
+    """Log for auto trading decisions"""
+    __tablename__ = "auto_trading_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    account_id = Column(Integer, index=True, nullable=False)
+
+    # Decision details
+    action = Column(String, nullable=False)  # 'OPEN_POSITION', 'CLOSE_POSITION', 'SKIP', 'ERROR'
+    symbol = Column(String, index=True)
+    reason = Column(String, nullable=False)
+
+    # Context
+    screening_score = Column(Float)
+    screening_data = Column(JSON)  # Store screening result for analysis
+
+    # Result
+    success = Column(Boolean, default=False)
+    error_message = Column(String)
+
+    # Timestamp
+    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+
+    __table_args__ = (
+        Index('idx_autolog_account_timestamp', 'account_id', 'timestamp'),
+    )

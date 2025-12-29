@@ -11,6 +11,7 @@ from backend.services.indicator_service import IndicatorService
 from backend.services.chart_service import ChartService
 from backend.services.notification_service import NotificationService
 from backend.services.trading_service import TradingService
+from backend.services.sim_trading_service import SimTradingService
 
 
 router = APIRouter()
@@ -843,6 +844,389 @@ async def get_top_gainers(
             "success": True,
             "count": len(top_gainers),
             "results": top_gainers
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== Simulated Trading Endpoints ====================
+
+class CreateSimAccountRequest(BaseModel):
+    account_name: str
+    initial_balance: float = 10000.0
+    max_positions: int = 5
+    position_size_pct: float = 2.0
+    entry_score_min: float = 75.0
+    entry_technical_min: float = 60.0
+    stop_loss_pct: float = 3.0
+    take_profit_levels: List[float] = [6.0, 9.0, 12.0]
+
+
+class UpdateSimAccountRequest(BaseModel):
+    auto_trading_enabled: Optional[bool] = None
+    max_positions: Optional[int] = None
+    position_size_pct: Optional[float] = None
+    entry_score_min: Optional[float] = None
+    entry_technical_min: Optional[float] = None
+    stop_loss_pct: Optional[float] = None
+    take_profit_levels: Optional[List[float]] = None
+
+
+class OpenPositionRequest(BaseModel):
+    symbol: str
+    entry_price: Optional[float] = None  # If None, use current market price
+
+
+class ClosePositionRequest(BaseModel):
+    close_price: Optional[float] = None  # If None, use current market price
+    close_reason: str = 'MANUAL'
+    partial_pct: float = 100.0
+
+
+@router.post("/sim-trading/accounts")
+async def create_sim_account(
+    request: CreateSimAccountRequest,
+    db: Session = Depends(get_db_session)
+):
+    """
+    Create a new simulated trading account
+
+    - **account_name**: Name for the account
+    - **initial_balance**: Starting balance (default 10000 USDT)
+    - **max_positions**: Maximum number of concurrent positions (default 5)
+    - **position_size_pct**: Position size as % of equity (default 2%)
+    - **entry_score_min**: Minimum total score to enter (default 75)
+    - **entry_technical_min**: Minimum technical score (default 60)
+    - **stop_loss_pct**: Stop loss percentage (default 3%)
+    - **take_profit_levels**: Take profit levels (default [6, 9, 12])
+    """
+    try:
+        sim_trading = SimTradingService(db)
+        account = sim_trading.create_account(
+            account_name=request.account_name,
+            initial_balance=request.initial_balance,
+            max_positions=request.max_positions,
+            position_size_pct=request.position_size_pct,
+            entry_score_min=request.entry_score_min,
+            entry_technical_min=request.entry_technical_min,
+            stop_loss_pct=request.stop_loss_pct,
+            take_profit_levels=request.take_profit_levels
+        )
+
+        return {
+            "success": True,
+            "account": {
+                "id": account.id,
+                "account_name": account.account_name,
+                "initial_balance": account.initial_balance,
+                "current_balance": account.current_balance,
+                "total_equity": account.total_equity,
+                "created_at": account.created_at.isoformat()
+            }
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/sim-trading/accounts")
+async def get_sim_accounts(db: Session = Depends(get_db_session)):
+    """Get all simulated trading accounts"""
+    try:
+        sim_trading = SimTradingService(db)
+        accounts = sim_trading.get_all_accounts()
+
+        return {
+            "success": True,
+            "count": len(accounts),
+            "accounts": [{
+                "id": acc.id,
+                "account_name": acc.account_name,
+                "initial_balance": acc.initial_balance,
+                "total_equity": acc.total_equity,
+                "total_pnl": acc.total_pnl,
+                "total_trades": acc.total_trades,
+                "win_rate": (acc.winning_trades / (acc.winning_trades + acc.losing_trades) * 100)
+                    if (acc.winning_trades + acc.losing_trades) > 0 else 0,
+                "auto_trading_enabled": acc.auto_trading_enabled,
+                "is_active": acc.is_active,
+                "created_at": acc.created_at.isoformat()
+            } for acc in accounts]
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/sim-trading/accounts/{account_id}")
+async def get_sim_account_summary(
+    account_id: int,
+    db: Session = Depends(get_db_session)
+):
+    """Get detailed summary of a simulated trading account"""
+    try:
+        sim_trading = SimTradingService(db)
+        summary = sim_trading.get_account_summary(account_id)
+
+        if not summary:
+            raise HTTPException(status_code=404, detail="Account not found")
+
+        return {
+            "success": True,
+            "summary": summary
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/sim-trading/accounts/{account_id}")
+async def update_sim_account(
+    account_id: int,
+    request: UpdateSimAccountRequest,
+    db: Session = Depends(get_db_session)
+):
+    """Update simulated trading account settings"""
+    try:
+        sim_trading = SimTradingService(db)
+        account = sim_trading.get_account(account_id)
+
+        if not account:
+            raise HTTPException(status_code=404, detail="Account not found")
+
+        # Update fields
+        if request.auto_trading_enabled is not None:
+            account.auto_trading_enabled = request.auto_trading_enabled
+        if request.max_positions is not None:
+            account.max_positions = request.max_positions
+        if request.position_size_pct is not None:
+            account.position_size_pct = request.position_size_pct
+        if request.entry_score_min is not None:
+            account.entry_score_min = request.entry_score_min
+        if request.entry_technical_min is not None:
+            account.entry_technical_min = request.entry_technical_min
+        if request.stop_loss_pct is not None:
+            account.stop_loss_pct = request.stop_loss_pct
+        if request.take_profit_levels is not None:
+            account.take_profit_levels = request.take_profit_levels
+
+        account.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(account)
+
+        return {
+            "success": True,
+            "message": "Account updated successfully",
+            "account_id": account.id,
+            "auto_trading_enabled": account.auto_trading_enabled
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/sim-trading/accounts/{account_id}/positions")
+async def open_sim_position(
+    account_id: int,
+    request: OpenPositionRequest,
+    db: Session = Depends(get_db_session)
+):
+    """Manually open a simulated position"""
+    try:
+        sim_trading = SimTradingService(db)
+
+        # Get entry price
+        entry_price = request.entry_price
+        if entry_price is None:
+            entry_price = sim_trading._get_current_price(request.symbol)
+            if not entry_price:
+                raise HTTPException(status_code=400, detail=f"Failed to get price for {request.symbol}")
+
+        success, message, position = sim_trading.open_position(
+            account_id=account_id,
+            symbol=request.symbol,
+            entry_price=entry_price
+        )
+
+        if not success:
+            raise HTTPException(status_code=400, detail=message)
+
+        return {
+            "success": True,
+            "message": message,
+            "position": sim_trading._position_to_dict(position)
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/sim-trading/positions/{position_id}")
+async def close_sim_position(
+    position_id: int,
+    request: ClosePositionRequest,
+    db: Session = Depends(get_db_session)
+):
+    """Manually close a simulated position"""
+    try:
+        sim_trading = SimTradingService(db)
+
+        success, message = sim_trading.close_position(
+            position_id=position_id,
+            close_price=request.close_price,
+            close_reason=request.close_reason,
+            partial_pct=request.partial_pct
+        )
+
+        if not success:
+            raise HTTPException(status_code=400, detail=message)
+
+        return {
+            "success": True,
+            "message": message
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/sim-trading/accounts/{account_id}/positions")
+async def get_sim_positions(
+    account_id: int,
+    include_closed: bool = Query(False),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db_session)
+):
+    """Get positions for a simulated account"""
+    try:
+        sim_trading = SimTradingService(db)
+
+        if include_closed:
+            positions = sim_trading.get_position_history(account_id, limit=limit)
+        else:
+            positions = sim_trading.get_open_positions(account_id)
+
+        return {
+            "success": True,
+            "count": len(positions),
+            "positions": [sim_trading._position_to_dict(p) for p in positions]
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/sim-trading/accounts/{account_id}/trades")
+async def get_sim_trades(
+    account_id: int,
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db_session)
+):
+    """Get trade history for a simulated account"""
+    try:
+        from backend.database.models import SimTrade
+
+        trades = db.query(SimTrade).filter(
+            SimTrade.account_id == account_id
+        ).order_by(SimTrade.trade_time.desc()).limit(limit).all()
+
+        sim_trading = SimTradingService(db)
+
+        return {
+            "success": True,
+            "count": len(trades),
+            "trades": [sim_trading._trade_to_dict(t) for t in trades]
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/sim-trading/accounts/{account_id}/auto-trade")
+async def trigger_auto_trading(
+    account_id: int,
+    db: Session = Depends(get_db_session)
+):
+    """
+    Manually trigger auto-trading monitor for an account
+    (Normally this runs on a schedule)
+    """
+    try:
+        sim_trading = SimTradingService(db)
+        actions = sim_trading.auto_trade_monitor(account_id)
+
+        return {
+            "success": True,
+            "actions": actions
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/sim-trading/accounts/{account_id}/check-exits")
+async def check_sim_exits(
+    account_id: int,
+    db: Session = Depends(get_db_session)
+):
+    """Check and execute stop-loss / take-profit for all positions"""
+    try:
+        sim_trading = SimTradingService(db)
+        exits = sim_trading.check_and_execute_exits(account_id)
+
+        return {
+            "success": True,
+            "exits_count": len(exits),
+            "exits": exits
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/sim-trading/accounts/{account_id}/logs")
+async def get_sim_trading_logs(
+    account_id: int,
+    limit: int = Query(default=100, le=500),
+    db: Session = Depends(get_db_session)
+):
+    """Get auto trading decision logs for an account"""
+    try:
+        from backend.database.models import AutoTradingLog
+
+        logs = db.query(AutoTradingLog)\
+            .filter(AutoTradingLog.account_id == account_id)\
+            .order_by(AutoTradingLog.timestamp.desc())\
+            .limit(limit)\
+            .all()
+
+        log_list = []
+        for log in logs:
+            log_list.append({
+                "id": log.id,
+                "action": log.action,
+                "symbol": log.symbol,
+                "reason": log.reason,
+                "screening_score": log.screening_score,
+                "success": log.success,
+                "error_message": log.error_message,
+                "timestamp": log.timestamp.isoformat() if log.timestamp else None
+            })
+
+        return {
+            "success": True,
+            "count": len(log_list),
+            "logs": log_list
         }
 
     except Exception as e:
