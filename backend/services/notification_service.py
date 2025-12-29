@@ -51,10 +51,13 @@ class NotificationService:
             return False
 
         try:
+            # 支持多个收件人（逗号分隔）
+            recipients = [email.strip() for email in settings.EMAIL_TO.split(',')]
+
             # Create message
             message = MIMEMultipart('alternative')
             message['From'] = settings.SMTP_USER
-            message['To'] = settings.EMAIL_TO
+            message['To'] = ', '.join(recipients)  # 格式化为标准的收件人列表
             message['Subject'] = subject
 
             # Add text part
