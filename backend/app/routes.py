@@ -162,6 +162,14 @@ async def generate_chart(
         chart_service = ChartService()
         indicator_service = IndicatorService()
 
+        # 先验证symbol是否是活跃的USDT现货交易对
+        active_symbols = binance.get_all_spot_symbols()
+        if request.symbol not in active_symbols:
+            raise HTTPException(
+                status_code=404,
+                detail=f"{request.symbol} 不是币安活跃的USDT现货交易对，可能已下架或不存在"
+            )
+
         # Fetch data
         df = binance.fetch_ohlcv(
             symbol=request.symbol,
@@ -170,7 +178,10 @@ async def generate_chart(
         )
 
         if df.empty:
-            raise HTTPException(status_code=404, detail="No data found for symbol")
+            raise HTTPException(
+                status_code=404,
+                detail=f"{request.symbol} 无法获取K线数据，请检查交易对是否正确"
+            )
 
         # Calculate indicators
         df = indicator_service.calculate_all_indicators(df)
@@ -214,6 +225,15 @@ async def get_historical_data(
     """Get historical OHLCV data for a symbol"""
     try:
         binance = BinanceService()
+
+        # 先验证symbol是否是活跃的USDT现货交易对
+        active_symbols = binance.get_all_spot_symbols()
+        if symbol not in active_symbols:
+            raise HTTPException(
+                status_code=404,
+                detail=f"{symbol} 不是币安活跃的USDT现货交易对，可能已下架或不存在"
+            )
+
         df = binance.get_historical_data(
             symbol=symbol,
             timeframe=timeframe,
@@ -221,7 +241,10 @@ async def get_historical_data(
         )
 
         if df.empty:
-            raise HTTPException(status_code=404, detail="No data found")
+            raise HTTPException(
+                status_code=404,
+                detail=f"{symbol} 无法获取历史数据，请检查交易对是否正确"
+            )
 
         # Convert to dict
         data = df.to_dict(orient='records')
@@ -255,11 +278,22 @@ async def get_indicators(
         binance = BinanceService()
         indicator_service = IndicatorService()
 
+        # 先验证symbol是否是活跃的USDT现货交易对
+        active_symbols = binance.get_all_spot_symbols()
+        if symbol not in active_symbols:
+            raise HTTPException(
+                status_code=404,
+                detail=f"{symbol} 不是币安活跃的USDT现货交易对，可能已下架或不存在"
+            )
+
         # Fetch data
         df = binance.fetch_ohlcv(symbol, timeframe, limit=500)
 
         if df.empty:
-            raise HTTPException(status_code=404, detail="No data found")
+            raise HTTPException(
+                status_code=404,
+                detail=f"{symbol} 无法获取数据，请检查交易对是否正确"
+            )
 
         # Calculate indicators
         df = indicator_service.calculate_all_indicators(df)

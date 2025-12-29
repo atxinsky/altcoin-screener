@@ -418,6 +418,39 @@ def load_analysis_data(import_id):
             # 转换为DataFrame
             data = []
             for trade in trades:
+                # 从symbol解析base_asset和quote_asset
+                symbol = trade.symbol
+                base_asset = None
+                quote_asset = None
+
+                # 尝试从raw_data中获取
+                if trade.raw_data and isinstance(trade.raw_data, dict):
+                    base_asset = trade.raw_data.get('base_asset')
+                    quote_asset = trade.raw_data.get('quote_asset')
+
+                # 如果raw_data中没有，则从symbol解析
+                if not base_asset or not quote_asset:
+                    if '-' in symbol or '/' in symbol:
+                        parts = symbol.replace('/', '-').split('-')
+                        if len(parts) >= 2:
+                            base_asset = parts[0]
+                            quote_asset = parts[1]
+                    else:
+                        # 假设是USDT交易对，尝试提取base_asset
+                        if symbol.endswith('USDT'):
+                            base_asset = symbol[:-4]
+                            quote_asset = 'USDT'
+                        elif symbol.endswith('BUSD'):
+                            base_asset = symbol[:-4]
+                            quote_asset = 'BUSD'
+                        elif symbol.endswith('USDC'):
+                            base_asset = symbol[:-4]
+                            quote_asset = 'USDC'
+                        else:
+                            # 默认值
+                            base_asset = symbol
+                            quote_asset = 'USDT'
+
                 data.append({
                     'timestamp': trade.timestamp,
                     'symbol': trade.symbol,
@@ -427,6 +460,8 @@ def load_analysis_data(import_id):
                     'amount': Decimal(str(trade.quote_quantity)),
                     'fee': Decimal(str(trade.commission)),
                     'fee_currency': trade.commission_asset,
+                    'base_asset': base_asset,
+                    'quote_asset': quote_asset,
                     'pnl': Decimal(0)  # 需要重新计算
                 })
 

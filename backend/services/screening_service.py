@@ -326,6 +326,20 @@ class ScreeningService:
     def _save_screening_results(self, results: List[Dict], timeframe: str):
         """Save screening results to database"""
         try:
+            from datetime import timedelta
+
+            # 删除同一时间窗口内的旧记录（5分钟内）避免重复
+            if results:
+                current_time = results[0]['timestamp']
+                time_window_start = current_time - timedelta(minutes=5)
+
+                # 删除时间窗口内的旧筛选结果
+                self.db.query(ScreeningResult).filter(
+                    ScreeningResult.timestamp >= time_window_start,
+                    ScreeningResult.timestamp <= current_time,
+                    ScreeningResult.timeframe == timeframe
+                ).delete(synchronize_session=False)
+
             for result in results:
                 screening_result = ScreeningResult(
                     symbol=result['symbol'],
@@ -401,9 +415,19 @@ class ScreeningService:
             ).order_by(
                 ScreeningResult.timestamp.desc(),
                 ScreeningResult.total_score.desc()
-            ).limit(limit).all()
+            ).all()
 
-            return [self._screening_result_to_dict(r) for r in results]
+            # 去重：每个symbol只保留最新的一条记录
+            seen_symbols = set()
+            unique_results = []
+            for r in results:
+                if r.symbol not in seen_symbols:
+                    seen_symbols.add(r.symbol)
+                    unique_results.append(r)
+                    if len(unique_results) >= limit:
+                        break
+
+            return [self._screening_result_to_dict(r) for r in unique_results]
         except Exception as e:
             print(f"Error getting top opportunities: {e}")
             return []
