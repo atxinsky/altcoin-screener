@@ -15,7 +15,10 @@ import {
   Tabs,
   Tag,
   Space,
-  Divider
+  Divider,
+  Tooltip,
+  Descriptions,
+  Collapse
 } from 'antd';
 import {
   DollarOutlined,
@@ -23,7 +26,9 @@ import {
   FallOutlined,
   TrophyOutlined,
   ThunderboltOutlined,
-  PlusOutlined
+  PlusOutlined,
+  InfoCircleOutlined,
+  ExpandOutlined
 } from '@ant-design/icons';
 import axios from 'axios';
 
@@ -101,7 +106,34 @@ const SimTradingPanel = () => {
   const handleCreateAccount = async (values) => {
     try {
       setLoading(true);
-      await axios.post(`${API_BASE}/sim-trading/accounts`, values);
+      // 转换止盈字段为数组格式
+      const payload = {
+        ...values,
+        take_profit_levels: [
+          values.take_profit_1 || 6.0,
+          values.take_profit_2 || 10.0,
+          values.take_profit_3 || 15.0
+        ],
+        // 策略配置JSON
+        strategy_config: {
+          require_macd_golden: values.require_macd_golden,
+          require_volume_surge: values.require_volume_surge,
+          trailing_stop_enabled: values.trailing_stop_enabled,
+          trailing_stop_pct: values.trailing_stop_pct,
+          max_holding_hours: values.max_holding_hours
+        }
+      };
+      // 删除单独的字段
+      delete payload.take_profit_1;
+      delete payload.take_profit_2;
+      delete payload.take_profit_3;
+      delete payload.require_macd_golden;
+      delete payload.require_volume_surge;
+      delete payload.trailing_stop_enabled;
+      delete payload.trailing_stop_pct;
+      delete payload.max_holding_hours;
+
+      await axios.post(`${API_BASE}/sim-trading/accounts`, payload);
       message.success('账户创建成功');
       setCreateModalVisible(false);
       form.resetFields();
@@ -304,23 +336,69 @@ const SimTradingPanel = () => {
     }
   ];
 
+  // 展开行渲染详细信息
+  const expandedRowRender = (record) => {
+    if (!record.screening_data) return null;
+    const data = record.screening_data;
+    return (
+      <Descriptions size="small" column={4} bordered>
+        <Descriptions.Item label="总分">{data.total_score?.toFixed(1)}</Descriptions.Item>
+        <Descriptions.Item label="Beta分">{data.beta_score?.toFixed(1)}</Descriptions.Item>
+        <Descriptions.Item label="成交量分">{data.volume_score?.toFixed(1)}</Descriptions.Item>
+        <Descriptions.Item label="技术分">{data.technical_score?.toFixed(1)}</Descriptions.Item>
+        <Descriptions.Item label="当前价格">${data.price?.toFixed(6)}</Descriptions.Item>
+        <Descriptions.Item label="24h成交量">${(data.volume_24h/1000000)?.toFixed(2)}M</Descriptions.Item>
+        <Descriptions.Item label="5m涨跌">{data.change_5m?.toFixed(2)}%</Descriptions.Item>
+        <Descriptions.Item label="15m涨跌">{data.change_15m?.toFixed(2)}%</Descriptions.Item>
+        <Descriptions.Item label="MACD金叉" span={1}>
+          <Tag color={data.macd_golden_cross ? 'green' : 'default'}>
+            {data.macd_golden_cross ? '是' : '否'}
+          </Tag>
+        </Descriptions.Item>
+        <Descriptions.Item label="RSI">{data.rsi?.toFixed(1)}</Descriptions.Item>
+        <Descriptions.Item label="成交量激增">
+          <Tag color={data.volume_surge ? 'orange' : 'default'}>
+            {data.volume_surge ? '是' : '否'}
+          </Tag>
+        </Descriptions.Item>
+        <Descriptions.Item label="价格异动">
+          <Tag color={data.price_anomaly ? 'red' : 'default'}>
+            {data.price_anomaly ? '是' : '否'}
+          </Tag>
+        </Descriptions.Item>
+        {data.signals && (
+          <Descriptions.Item label="技术信号" span={4}>
+            {Object.entries(data.signals || {}).map(([key, val]) => (
+              <Tag key={key} color={val ? 'blue' : 'default'} style={{marginBottom: 4}}>
+                {key}: {val ? '✓' : '✗'}
+              </Tag>
+            ))}
+          </Descriptions.Item>
+        )}
+      </Descriptions>
+    );
+  };
+
   const logColumns = [
     {
       title: '时间',
       dataIndex: 'timestamp',
       key: 'timestamp',
-      width: 180,
+      width: 160,
       render: (time) => new Date(time).toLocaleString('zh-CN')
     },
     {
       title: '操作',
       dataIndex: 'action',
       key: 'action',
-      width: 120,
+      width: 80,
       render: (action) => {
         const actionMap = {
           'OPEN_POSITION': { text: '开仓', color: 'green' },
           'CLOSE_POSITION': { text: '平仓', color: 'red' },
+          'PARTIAL_EXIT': { text: '部分平仓', color: 'orange' },
+          'STOP_LOSS': { text: '止损', color: 'volcano' },
+          'TAKE_PROFIT': { text: '止盈', color: 'cyan' },
           'SKIP': { text: '跳过', color: 'default' },
           'ERROR': { text: '错误', color: 'red' }
         };
@@ -332,38 +410,50 @@ const SimTradingPanel = () => {
       title: '币种',
       dataIndex: 'symbol',
       key: 'symbol',
-      width: 100
+      width: 110
     },
     {
-      title: '分数',
+      title: '总分',
       dataIndex: 'screening_score',
       key: 'screening_score',
-      width: 80,
-      render: (score) => score ? score.toFixed(1) : '-'
+      width: 60,
+      render: (score) => score ? <span style={{fontWeight: score >= 75 ? 'bold' : 'normal', color: score >= 80 ? '#52c41a' : score >= 75 ? '#1890ff' : '#999'}}>{score.toFixed(1)}</span> : '-'
     },
     {
-      title: '原因',
+      title: '价格',
+      dataIndex: ['screening_data', 'price'],
+      key: 'price',
+      width: 100,
+      render: (price) => price ? `$${price.toFixed(6)}` : '-'
+    },
+    {
+      title: '数量',
+      dataIndex: ['screening_data', 'quantity'],
+      key: 'quantity',
+      width: 80,
+      render: (qty) => qty ? qty.toFixed(2) : '-'
+    },
+    {
+      title: '决策原因',
       dataIndex: 'reason',
       key: 'reason',
-      ellipsis: true
+      ellipsis: true,
+      render: (reason) => (
+        <Tooltip title={reason}>
+          <span>{reason}</span>
+        </Tooltip>
+      )
     },
     {
       title: '状态',
       dataIndex: 'success',
       key: 'success',
-      width: 80,
+      width: 70,
       render: (success) => (
         <Tag color={success ? 'success' : 'error'}>
           {success ? '成功' : '失败'}
         </Tag>
       )
-    },
-    {
-      title: '错误信息',
-      dataIndex: 'error_message',
-      key: 'error_message',
-      ellipsis: true,
-      render: (msg) => msg ? <span style={{ color: '#cf1322' }}>{msg}</span> : '-'
     }
   ];
 
@@ -497,6 +587,10 @@ const SimTradingPanel = () => {
                     loading={loading}
                     pagination={{ pageSize: 50 }}
                     size="small"
+                    expandable={{
+                      expandedRowRender,
+                      rowExpandable: (record) => record.screening_data != null,
+                    }}
                   />
                 </TabPane>
               </Tabs>
@@ -511,6 +605,7 @@ const SimTradingPanel = () => {
         onCancel={() => setCreateModalVisible(false)}
         onOk={() => form.submit()}
         confirmLoading={loading}
+        width={700}
       >
         <Form
           form={form}
@@ -523,61 +618,143 @@ const SimTradingPanel = () => {
             entry_score_min: 75.0,
             entry_technical_min: 60.0,
             stop_loss_pct: 3.0,
-            take_profit_levels: [6.0, 9.0, 12.0]
+            take_profit_1: 6.0,
+            take_profit_2: 10.0,
+            take_profit_3: 15.0,
+            require_macd_golden: true,
+            require_volume_surge: false,
+            trailing_stop_enabled: false,
+            trailing_stop_pct: 2.0,
+            max_holding_hours: 24
           }}
         >
-          <Form.Item
-            name="account_name"
-            label="账户名称"
-            rules={[{ required: true, message: '请输入账户名称' }]}
-          >
-            <Input placeholder="例如: 保守策略A" />
-          </Form.Item>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="account_name"
+                label="账户名称"
+                rules={[{ required: true, message: '请输入账户名称' }]}
+              >
+                <Input placeholder="例如: 保守策略A" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="initial_balance"
+                label="初始资金 (USDT)"
+                rules={[{ required: true, message: '请输入初始资金' }]}
+              >
+                <InputNumber min={1000} max={1000000} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+          </Row>
 
-          <Form.Item
-            name="initial_balance"
-            label="初始资金 (USDT)"
-            rules={[{ required: true, message: '请输入初始资金' }]}
-          >
-            <InputNumber min={1000} max={1000000} style={{ width: '100%' }} />
-          </Form.Item>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="max_positions" label="最大持仓数">
+                <InputNumber min={1} max={20} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="position_size_pct" label="单仓位资金占比 (%)">
+                <InputNumber min={0.5} max={20} step={0.5} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+          </Row>
 
-          <Form.Item
-            name="max_positions"
-            label="最大持仓数"
-          >
-            <InputNumber min={1} max={20} style={{ width: '100%' }} />
-          </Form.Item>
+          <Divider orientation="left">入场条件</Divider>
 
-          <Form.Item
-            name="position_size_pct"
-            label="单仓位资金占比 (%)"
-          >
-            <InputNumber min={0.5} max={20} step={0.5} style={{ width: '100%' }} />
-          </Form.Item>
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item name="entry_score_min" label="最低总分">
+                <InputNumber min={0} max={100} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="entry_technical_min" label="最低技术分">
+                <InputNumber min={0} max={100} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="max_holding_hours" label={
+                <span>最大持仓时间 <Tooltip title="超过此时间自动平仓"><InfoCircleOutlined /></Tooltip></span>
+              }>
+                <InputNumber min={1} max={168} addonAfter="小时" style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+          </Row>
 
-          <Divider>策略参数</Divider>
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item name="require_macd_golden" valuePropName="checked" label={
+                <span>要求MACD金叉 <Tooltip title="只有MACD金叉时才开仓"><InfoCircleOutlined /></Tooltip></span>
+              }>
+                <Switch checkedChildren="是" unCheckedChildren="否" />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item name="require_volume_surge" valuePropName="checked" label={
+                <span>要求成交量激增 <Tooltip title="只有成交量激增时才开仓"><InfoCircleOutlined /></Tooltip></span>
+              }>
+                <Switch checkedChildren="是" unCheckedChildren="否" />
+              </Form.Item>
+            </Col>
+          </Row>
 
-          <Form.Item
-            name="entry_score_min"
-            label="最低总分"
-          >
-            <InputNumber min={0} max={100} style={{ width: '100%' }} />
-          </Form.Item>
+          <Divider orientation="left">止损设置</Divider>
 
-          <Form.Item
-            name="entry_technical_min"
-            label="最低技术分"
-          >
-            <InputNumber min={0} max={100} style={{ width: '100%' }} />
-          </Form.Item>
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item name="stop_loss_pct" label="固定止损 (%)">
+                <InputNumber min={0.5} max={20} step={0.5} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="trailing_stop_enabled" valuePropName="checked" label="启用追踪止损">
+                <Switch checkedChildren="是" unCheckedChildren="否" />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="trailing_stop_pct" label={
+                <span>追踪止损 (%) <Tooltip title="从最高点回撤此比例触发止损"><InfoCircleOutlined /></Tooltip></span>
+              }>
+                <InputNumber min={0.5} max={10} step={0.5} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+          </Row>
 
-          <Form.Item
-            name="stop_loss_pct"
-            label="止损 (%)"
-          >
-            <InputNumber min={0.5} max={10} step={0.5} style={{ width: '100%' }} />
-          </Form.Item>
+          <Divider orientation="left">止盈设置 (分批止盈)</Divider>
+
+          <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item name="take_profit_1" label={
+                <span>止盈1 (%) <Tooltip title="到达后平仓1/3"><InfoCircleOutlined /></Tooltip></span>
+              }>
+                <InputNumber min={1} max={50} step={0.5} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="take_profit_2" label={
+                <span>止盈2 (%) <Tooltip title="到达后再平仓1/3"><InfoCircleOutlined /></Tooltip></span>
+              }>
+                <InputNumber min={1} max={100} step={0.5} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="take_profit_3" label={
+                <span>止盈3 (%) <Tooltip title="到达后全部平仓"><InfoCircleOutlined /></Tooltip></span>
+              }>
+                <InputNumber min={1} max={200} step={1} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <div style={{ background: '#f5f5f5', padding: '12px', borderRadius: '4px', marginTop: '8px' }}>
+            <small style={{ color: '#666' }}>
+              <strong>策略说明：</strong> 系统将按照设定的条件自动筛选并开仓，分批止盈时会在TP1/TP2/TP3分别平仓33%的仓位。
+              追踪止损会在盈利后动态调整止损位。
+            </small>
+          </div>
         </Form>
       </Modal>
     </div>

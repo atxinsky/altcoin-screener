@@ -284,11 +284,20 @@ class SimAccount(Base):
     max_positions = Column(Integer, default=5)
     position_size_pct = Column(Float, default=2.0)  # % of total equity per position
 
-    # Strategy config
+    # Strategy config - basic
     entry_score_min = Column(Float, default=75.0)
     entry_technical_min = Column(Float, default=60.0)
     stop_loss_pct = Column(Float, default=3.0)
-    take_profit_levels = Column(JSON, default=[6.0, 9.0, 12.0])  # Multiple TP levels
+    take_profit_levels = Column(JSON, default=[6.0, 10.0, 15.0])  # Multiple TP levels
+
+    # Strategy config - advanced (JSON for flexibility)
+    strategy_config = Column(JSON, default={
+        'require_macd_golden': True,
+        'require_volume_surge': False,
+        'trailing_stop_enabled': False,
+        'trailing_stop_pct': 2.0,
+        'max_holding_hours': 24
+    })
 
     # Status
     is_active = Column(Boolean, default=True, index=True)

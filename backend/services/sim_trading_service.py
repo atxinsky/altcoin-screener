@@ -421,6 +421,11 @@ class SimTradingService:
         Returns:
             (should_enter, reason)
         """
+        # Get strategy config with defaults
+        strategy_config = account.strategy_config or {}
+        require_macd = strategy_config.get('require_macd_golden', True)
+        require_volume_surge = strategy_config.get('require_volume_surge', False)
+
         # Check total score
         if screening_result['total_score'] < account.entry_score_min:
             return False, f"Total score too low: {screening_result['total_score']:.1f} < {account.entry_score_min}"
@@ -429,26 +434,30 @@ class SimTradingService:
         if screening_result['technical_score'] < account.entry_technical_min:
             return False, f"Technical score too low: {screening_result['technical_score']:.1f} < {account.entry_technical_min}"
 
-        # Check required signals
-        required_signals = {
-            'macd_golden_cross': screening_result.get('macd_golden_cross', False),
-            'above_all_ema': screening_result.get('above_all_ema', False),
-        }
-
-        if not required_signals['macd_golden_cross']:
+        # Check MACD golden cross if required
+        if require_macd and not screening_result.get('macd_golden_cross', False):
             return False, "Missing MACD golden cross signal"
 
-        if not required_signals['above_all_ema']:
-            return False, "Missing price above all EMA signal"
+        # Check price above all EMA
+        if not screening_result.get('above_all_ema', False):
+            return False, "Price not above all EMAs"
 
-        # Check RSI (avoid overbought)
-        # We don't have RSI in screening_result, but it's already factored into technical_score
+        # Check volume surge if required
+        if require_volume_surge and not screening_result.get('volume_surge', False):
+            return False, "Missing volume surge signal"
 
-        # Check volume
+        # Check volume score minimum
         if screening_result.get('volume_score', 0) < 40:
-            return False, f"Volume too low: {screening_result.get('volume_score', 0)}"
+            return False, f"Volume score too low: {screening_result.get('volume_score', 0)}"
 
-        return True, "All entry criteria met"
+        # Build detailed success reason
+        signals = []
+        if screening_result.get('macd_golden_cross'): signals.append('MACD金叉')
+        if screening_result.get('above_all_ema'): signals.append('价格>EMA')
+        if screening_result.get('volume_surge'): signals.append('量能激增')
+        if screening_result.get('above_sma'): signals.append('价格>SMA')
+
+        return True, f"Entry criteria met: {', '.join(signals)}"
 
     def auto_trade_monitor(self, account_id: int) -> Dict:
         """
@@ -497,18 +506,33 @@ class SimTradingService:
 
         # Evaluate screening results
         for result in screening_results:
-            # Convert to dict
+            # Convert to dict with comprehensive data for logging
             result_dict = {
                 'symbol': result.symbol,
                 'total_score': result.total_score,
                 'technical_score': result.technical_score,
                 'beta_score': result.beta_score,
                 'volume_score': result.volume_score,
+                'price': result.current_price,
+                'volume_24h': getattr(result, 'volume_24h', None),
+                'change_5m': getattr(result, 'change_5m', None),
+                'change_15m': getattr(result, 'change_15m', None),
+                'change_1h': getattr(result, 'change_1h', None),
                 'macd_golden_cross': result.macd_golden_cross,
                 'above_all_ema': result.above_all_ema,
                 'above_sma': result.above_sma,
                 'volume_surge': result.volume_surge,
-                'current_price': result.current_price,
+                'price_anomaly': getattr(result, 'price_anomaly', False),
+                'rsi': getattr(result, 'rsi', None),
+                'signals': {
+                    'macd_golden_cross': result.macd_golden_cross,
+                    'above_all_ema': result.above_all_ema,
+                    'above_sma': result.above_sma,
+                    'volume_surge': result.volume_surge,
+                },
+                # 计算仓位信息
+                'position_size_usdt': account.total_equity * (account.position_size_pct / 100),
+                'quantity': (account.total_equity * (account.position_size_pct / 100)) / result.current_price if result.current_price else 0,
             }
 
             # Evaluate entry criteria
