@@ -722,7 +722,7 @@ function RealTradingSection() {
               color="purple"
             />
             <StatsCard
-              title="RECENT ORDERS"
+              title="LOCAL ORDERS"
               value={orders.length}
               icon={<ShoppingCart className="w-5 h-5" />}
               color="default"
@@ -742,7 +742,7 @@ function RealTradingSection() {
                 SPOT BALANCES ({balances.filter(b => parseFloat(b.free) > 0 || parseFloat(b.locked) > 0).length})
               </TabsTrigger>
               <TabsTrigger value="orders">
-                ORDER HISTORY ({orders.length})
+                LOCAL ORDERS ({orders.length})
               </TabsTrigger>
             </TabsList>
 
@@ -795,6 +795,11 @@ function RealTradingSection() {
 
             <TabsContent value="orders">
               <Card>
+                <CardHeader className="pb-2">
+                  <p className="text-xs text-muted-foreground">
+                    Local order attempts through this application. For complete exchange history, check Binance directly.
+                  </p>
+                </CardHeader>
                 <CardContent className="p-0">
                   <table className="data-table">
                     <thead>
@@ -803,21 +808,21 @@ function RealTradingSection() {
                         <th>SYMBOL</th>
                         <th>SIDE</th>
                         <th>TYPE</th>
-                        <th>PRICE</th>
                         <th>QTY</th>
                         <th>STATUS</th>
+                        <th>NOTE</th>
                       </tr>
                     </thead>
                     <tbody>
                       {orders.length === 0 ? (
                         <tr>
                           <td colSpan={7} className="text-center py-8 text-muted-foreground">
-                            No orders found
+                            No local orders found
                           </td>
                         </tr>
                       ) : (
                         orders.map((order) => (
-                          <tr key={order.id}>
+                          <tr key={order.id} className={order.status === 'FAILED' ? 'opacity-60' : ''}>
                             <td className="font-mono text-xs">
                               {order.created_at ? new Date(order.created_at).toLocaleString() : '-'}
                             </td>
@@ -828,16 +833,19 @@ function RealTradingSection() {
                               </Badge>
                             </td>
                             <td className="font-mono text-xs">{order.order_type}</td>
-                            <td className="font-mono">${formatPrice(order.price)}</td>
                             <td className="font-mono">{order.quantity?.toFixed(4)}</td>
                             <td>
                               <Badge variant={
                                 order.status === 'FILLED' ? 'success' :
-                                order.status === 'CANCELLED' ? 'destructive' :
+                                order.status === 'FAILED' ? 'destructive' :
+                                order.status === 'CANCELLED' ? 'warning' :
                                 'secondary'
                               }>
                                 {order.status}
                               </Badge>
+                            </td>
+                            <td className="text-xs text-muted-foreground max-w-[200px] truncate">
+                              {order.notes?.split('\n')[0] || '-'}
                             </td>
                           </tr>
                         ))
