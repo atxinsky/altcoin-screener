@@ -1231,3 +1231,193 @@ async def get_sim_trading_logs(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== Notification Settings ====================
+
+class NotificationSettingsRequest(BaseModel):
+    email_enabled: Optional[bool] = None
+    telegram_enabled: Optional[bool] = None
+    min_interval_minutes: Optional[int] = None
+    daily_limit: Optional[int] = None
+    min_score_threshold: Optional[float] = None
+    notify_top_n: Optional[int] = None
+    notify_high_score: Optional[bool] = None
+    notify_new_signals: Optional[bool] = None
+    notify_position_updates: Optional[bool] = None
+    quiet_hours_enabled: Optional[bool] = None
+    quiet_hours_start: Optional[int] = None
+    quiet_hours_end: Optional[int] = None
+
+
+@router.get("/notification-settings")
+async def get_notification_settings(
+    db: Session = Depends(get_db_session)
+):
+    """Get notification settings"""
+    try:
+        from backend.database.models import NotificationSettings
+
+        settings = db.query(NotificationSettings).first()
+
+        # Create default settings if not exists
+        if not settings:
+            settings = NotificationSettings()
+            db.add(settings)
+            db.commit()
+            db.refresh(settings)
+
+        return {
+            "success": True,
+            "settings": {
+                "id": settings.id,
+                "email_enabled": settings.email_enabled,
+                "telegram_enabled": settings.telegram_enabled,
+                "min_interval_minutes": settings.min_interval_minutes,
+                "daily_limit": settings.daily_limit,
+                "daily_count": settings.daily_count,
+                "min_score_threshold": settings.min_score_threshold,
+                "notify_top_n": settings.notify_top_n,
+                "notify_high_score": settings.notify_high_score,
+                "notify_new_signals": settings.notify_new_signals,
+                "notify_position_updates": settings.notify_position_updates,
+                "quiet_hours_enabled": settings.quiet_hours_enabled,
+                "quiet_hours_start": settings.quiet_hours_start,
+                "quiet_hours_end": settings.quiet_hours_end,
+                "last_notification_time": settings.last_notification_time.isoformat() if settings.last_notification_time else None,
+                "updated_at": settings.updated_at.isoformat() if settings.updated_at else None
+            }
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/notification-settings")
+async def update_notification_settings(
+    request: NotificationSettingsRequest,
+    db: Session = Depends(get_db_session)
+):
+    """Update notification settings"""
+    try:
+        from backend.database.models import NotificationSettings
+
+        settings = db.query(NotificationSettings).first()
+
+        # Create default settings if not exists
+        if not settings:
+            settings = NotificationSettings()
+            db.add(settings)
+            db.commit()
+            db.refresh(settings)
+
+        # Update fields
+        if request.email_enabled is not None:
+            settings.email_enabled = request.email_enabled
+        if request.telegram_enabled is not None:
+            settings.telegram_enabled = request.telegram_enabled
+        if request.min_interval_minutes is not None:
+            settings.min_interval_minutes = request.min_interval_minutes
+        if request.daily_limit is not None:
+            settings.daily_limit = request.daily_limit
+        if request.min_score_threshold is not None:
+            settings.min_score_threshold = request.min_score_threshold
+        if request.notify_top_n is not None:
+            settings.notify_top_n = request.notify_top_n
+        if request.notify_high_score is not None:
+            settings.notify_high_score = request.notify_high_score
+        if request.notify_new_signals is not None:
+            settings.notify_new_signals = request.notify_new_signals
+        if request.notify_position_updates is not None:
+            settings.notify_position_updates = request.notify_position_updates
+        if request.quiet_hours_enabled is not None:
+            settings.quiet_hours_enabled = request.quiet_hours_enabled
+        if request.quiet_hours_start is not None:
+            settings.quiet_hours_start = request.quiet_hours_start
+        if request.quiet_hours_end is not None:
+            settings.quiet_hours_end = request.quiet_hours_end
+
+        settings.updated_at = datetime.utcnow()
+        db.commit()
+        db.refresh(settings)
+
+        return {
+            "success": True,
+            "message": "Settings updated successfully",
+            "settings": {
+                "id": settings.id,
+                "email_enabled": settings.email_enabled,
+                "telegram_enabled": settings.telegram_enabled,
+                "min_interval_minutes": settings.min_interval_minutes,
+                "daily_limit": settings.daily_limit,
+                "min_score_threshold": settings.min_score_threshold,
+                "notify_top_n": settings.notify_top_n,
+                "notify_high_score": settings.notify_high_score,
+                "notify_new_signals": settings.notify_new_signals,
+                "notify_position_updates": settings.notify_position_updates,
+                "quiet_hours_enabled": settings.quiet_hours_enabled,
+                "quiet_hours_start": settings.quiet_hours_start,
+                "quiet_hours_end": settings.quiet_hours_end
+            }
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/notification-settings/reset-daily-count")
+async def reset_daily_notification_count(
+    db: Session = Depends(get_db_session)
+):
+    """Reset the daily notification count"""
+    try:
+        from backend.database.models import NotificationSettings
+
+        settings = db.query(NotificationSettings).first()
+        if settings:
+            settings.daily_count = 0
+            settings.daily_count_reset_date = datetime.utcnow().strftime("%Y-%m-%d")
+            db.commit()
+
+        return {"success": True, "message": "Daily count reset"}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/notification-settings/test")
+async def test_notification(
+    db: Session = Depends(get_db_session)
+):
+    """Send a test notification"""
+    try:
+        notification_service = NotificationService(db)
+
+        test_results = [{
+            'symbol': 'TEST/USDT',
+            'total_score': 85.0,
+            'current_price': 1.0,
+            'btc_ratio_change_pct': 5.0,
+            'eth_ratio_change_pct': 4.0,
+            'volume_24h': 1000000,
+            'above_sma': True,
+            'macd_golden_cross': True,
+            'above_all_ema': True,
+            'volume_surge': False,
+            'price_anomaly': False
+        }]
+
+        success = await notification_service.send_screening_alert(
+            results=test_results,
+            timeframe='test',
+            send_email=True,
+            send_telegram=True
+        )
+
+        return {
+            "success": success,
+            "message": "Test notification sent" if success else "Failed to send notification"
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

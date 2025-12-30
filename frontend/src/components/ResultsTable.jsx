@@ -15,7 +15,7 @@ import KlineChart from './KlineChart'
 
 const { Option } = Select
 
-const ResultsTable = () => {
+const ResultsTable = ({ screeningResults }) => {
   const [data, setData] = useState([])
   const [loading, setLoading] = useState(false)
   const [chartModalVisible, setChartModalVisible] = useState(false)
@@ -25,16 +25,26 @@ const ResultsTable = () => {
   const [tradeModalVisible, setTradeModalVisible] = useState(false)
   const [currentSymbol, setCurrentSymbol] = useState(null)
   const [tradeForm] = Form.useForm()
+  const [dataSource, setDataSource] = useState('default')  // 'default' 或 'screening'
 
   useEffect(() => {
     loadResults()
   }, [])
+
+  // 当有新的筛选结果时，更新显示
+  useEffect(() => {
+    if (screeningResults && screeningResults.length > 0) {
+      setData(screeningResults)
+      setDataSource('screening')
+    }
+  }, [screeningResults])
 
   const loadResults = async () => {
     setLoading(true)
     try {
       const result = await getTopOpportunities(20, 60)
       setData(result.results || [])
+      setDataSource('default')  // 重置为默认数据源
     } catch (error) {
       console.error('Failed to load results:', error)
       message.error('加载结果失败')
@@ -302,14 +312,21 @@ const ResultsTable = () => {
   return (
     <>
       <Card
-        title="筛选结果"
+        title={
+          <Space>
+            <span>筛选结果</span>
+            <Tag color={dataSource === 'screening' ? 'green' : 'blue'}>
+              {dataSource === 'screening' ? '实时筛选' : '历史机会'}
+            </Tag>
+          </Space>
+        }
         extra={
           <Button
             icon={<ReloadOutlined />}
             onClick={loadResults}
             loading={loading}
           >
-            刷新
+            刷新历史机会
           </Button>
         }
       >

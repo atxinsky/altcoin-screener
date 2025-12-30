@@ -385,6 +385,44 @@ class SimTrade(Base):
     )
 
 
+class NotificationSettings(Base):
+    """Notification settings for email and telegram"""
+    __tablename__ = "notification_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # 通知开关
+    email_enabled = Column(Boolean, default=True)
+    telegram_enabled = Column(Boolean, default=True)
+
+    # 频率控制（分钟）
+    min_interval_minutes = Column(Integer, default=30)  # 最小通知间隔
+    last_notification_time = Column(DateTime)  # 上次发送时间
+
+    # 每日通知限制
+    daily_limit = Column(Integer, default=10)  # 每天最多发送次数
+    daily_count = Column(Integer, default=0)  # 今日已发送次数
+    daily_count_reset_date = Column(String)  # 重置日期 (YYYY-MM-DD)
+
+    # 通知内容设置
+    min_score_threshold = Column(Float, default=75.0)  # 最低分数阈值
+    notify_top_n = Column(Integer, default=5)  # 每次通知前N个
+
+    # 通知类型
+    notify_high_score = Column(Boolean, default=True)  # 高分机会通知
+    notify_new_signals = Column(Boolean, default=True)  # 新信号通知
+    notify_position_updates = Column(Boolean, default=True)  # 持仓更新通知
+
+    # 静默时段（北京时间）
+    quiet_hours_enabled = Column(Boolean, default=True)
+    quiet_hours_start = Column(Integer, default=22)  # 22:00 开始静默
+    quiet_hours_end = Column(Integer, default=7)  # 07:00 结束静默
+
+    # 时间戳
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class AutoTradingLog(Base):
     """Log for auto trading decisions"""
     __tablename__ = "auto_trading_logs"

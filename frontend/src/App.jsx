@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Layout, Typography, Space, Card, Row, Col, Spin, Menu } from 'antd'
-import { RocketOutlined, LineChartOutlined, BarChartOutlined, ThunderboltOutlined } from '@ant-design/icons'
+import { RocketOutlined, LineChartOutlined, BarChartOutlined, ThunderboltOutlined, SettingOutlined } from '@ant-design/icons'
 import ScreeningPanel from './components/ScreeningPanel'
 import ResultsTable from './components/ResultsTable'
 import MarketOverview from './components/MarketOverview'
@@ -8,6 +8,7 @@ import StatsPanel from './components/StatsPanel'
 import TradingPanel from './components/TradingPanel'
 import HistoricalRankings from './components/HistoricalRankings'
 import SimTradingPanel from './components/SimTradingPanel'
+import NotificationSettingsPanel from './components/NotificationSettingsPanel'
 import { getMarketOverview, getStats } from './services/api'
 
 const { Header, Content } = Layout
@@ -18,6 +19,7 @@ function App() {
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [currentView, setCurrentView] = useState('screener')
+  const [screeningResults, setScreeningResults] = useState(null)  // 新增：存储筛选结果
 
   useEffect(() => {
     loadInitialData()
@@ -54,6 +56,11 @@ function App() {
       key: 'sim-trading',
       icon: <ThunderboltOutlined />,
       label: '模拟交易',
+    },
+    {
+      key: 'settings',
+      icon: <SettingOutlined />,
+      label: '通知设置',
     },
   ]
 
@@ -125,15 +132,22 @@ function App() {
 
               {/* Screening Panel */}
               <Card className="screening-card">
-                <ScreeningPanel onStatsUpdate={loadInitialData} />
+                <ScreeningPanel
+                  onStatsUpdate={loadInitialData}
+                  onResultsUpdate={setScreeningResults}
+                />
               </Card>
 
               {/* Results Table */}
-              <ResultsTable />
+              <ResultsTable screeningResults={screeningResults} />
             </Space>
           )
         ) : currentView === 'sim-trading' ? (
           <SimTradingPanel />
+        ) : currentView === 'settings' ? (
+          <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
+            <NotificationSettingsPanel />
+          </div>
         ) : (
           <div style={{
             width: '100%',

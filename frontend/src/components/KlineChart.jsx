@@ -24,7 +24,13 @@ const KlineChart = ({ symbol, initialTimeframe = '5m' }) => {
 
         if (chartRef.current && !chartInstance.current && mounted) {
           // 创建图表实例（只创建一次）
-          chartInstance.current = klinecharts.init(chartRef.current)
+          chartInstance.current = klinecharts.init(chartRef.current, {
+            timezone: 'Asia/Shanghai',  // 设置为北京时间 (UTC+8)
+            locale: 'zh-CN'
+          })
+
+          // 再次确保时区设置生效
+          chartInstance.current.setTimezone('Asia/Shanghai')
 
           // 设置十字光标监听
           chartInstance.current.subscribeAction('onCrosshairChange', (data) => {
@@ -97,14 +103,21 @@ const KlineChart = ({ symbol, initialTimeframe = '5m' }) => {
       const response = await getHistoricalData(symbol, timeframe, 7)
 
       if (response.data && response.data.length > 0) {
-        const chartData = response.data.map(item => ({
-          timestamp: new Date(item.timestamp).getTime(),
-          open: item.open,
-          high: item.high,
-          low: item.low,
-          close: item.close,
-          volume: item.volume
-        }))
+        const chartData = response.data.map(item => {
+          // 后端返回的是 UTC 时间，需要加 'Z' 后缀确保正确解析
+          let ts = item.timestamp
+          if (!ts.endsWith('Z') && !ts.includes('+')) {
+            ts = ts + 'Z'
+          }
+          return {
+            timestamp: new Date(ts).getTime(),
+            open: item.open,
+            high: item.high,
+            low: item.low,
+            close: item.close,
+            volume: item.volume
+          }
+        })
 
         if (chartInstance.current) {
           // 使用applyNewData更新数据，不重新创建指标

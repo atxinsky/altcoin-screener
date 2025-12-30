@@ -2305,24 +2305,69 @@ with st.sidebar.expander("币安API状态", expanded=False):
 if st.session_state.processed_data is not None:
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 全局过滤条件")
-    
-    # 获取交易对列表
-    symbols = st.session_state.symbols
-    
+
+    # 获取原始数据用于过滤
+    all_data = st.session_state.processed_data
+    min_date, max_date = st.session_state.date_range
+
     # 确保 session_state 中存在全局筛选条件
     if 'global_selected_symbols' not in st.session_state:
         st.session_state.global_selected_symbols = ["全部"]
     if 'global_selected_start_date' not in st.session_state or 'global_selected_end_date' not in st.session_state:
-        st.session_state.global_selected_start_date, st.session_state.global_selected_end_date = st.session_state.date_range
-        
-    # 1. 交易对选择（全局）
+        st.session_state.global_selected_start_date, st.session_state.global_selected_end_date = min_date, max_date
+    if 'global_selected_year' not in st.session_state:
+        st.session_state.global_selected_year = "全部年份"
+
+    # 0. 年度选择（新增）
+    # 获取数据中包含的所有年份
+    all_years = sorted(all_data['timestamp'].dt.year.unique(), reverse=True)
+    year_options = ["全部年份"] + [str(y) for y in all_years]
+
+    selected_year = st.sidebar.selectbox(
+        "📅 选择年度",
+        year_options,
+        index=year_options.index(st.session_state.global_selected_year) if st.session_state.global_selected_year in year_options else 0,
+        key="sidebar_year"
+    )
+    st.session_state.global_selected_year = selected_year
+
+    # 根据选择的年度过滤数据和设置日期范围
+    if selected_year != "全部年份":
+        year_int = int(selected_year)
+        # 过滤该年度的数据
+        year_data = all_data[all_data['timestamp'].dt.year == year_int]
+
+        if not year_data.empty:
+            # 获取该年度的日期范围
+            year_min_date = year_data['timestamp'].min().date()
+            year_max_date = year_data['timestamp'].max().date()
+
+            # 获取该年度有交易的交易对
+            symbols = sorted(year_data['symbol'].unique())
+
+            # 自动更新日期范围
+            st.session_state.global_selected_start_date = year_min_date
+            st.session_state.global_selected_end_date = year_max_date
+
+            st.sidebar.info(f"📊 {selected_year}年: {len(symbols)} 个交易对, {len(year_data)} 笔交易")
+        else:
+            symbols = []
+            st.sidebar.warning(f"⚠️ {selected_year}年没有交易数据")
+    else:
+        # 使用全部数据
+        symbols = st.session_state.symbols
+        st.session_state.global_selected_start_date = min_date
+        st.session_state.global_selected_end_date = max_date
+        st.sidebar.info(f"📊 全部数据: {len(symbols)} 个交易对, {len(all_data)} 笔交易")
+
+    # 1. 交易对选择（根据年度过滤后的列表）
     global_selected_symbols = st.sidebar.multiselect(
-        "选择交易对", 
-        ["全部"] + symbols, 
-        default=st.session_state.global_selected_symbols,
+        "选择交易对",
+        ["全部"] + symbols,
+        default=["全部"] if st.session_state.global_selected_symbols == ["全部"] or st.session_state.global_selected_year != "全部年份" else st.session_state.global_selected_symbols,
         key="sidebar_symbols"
     )
-    
+
     # 处理"全部"选项逻辑
     if not global_selected_symbols:
         st.sidebar.warning("请至少选择一个交易对或选择'全部'")
@@ -2330,35 +2375,46 @@ if st.session_state.processed_data is not None:
     elif "全部" in global_selected_symbols and len(global_selected_symbols) > 1:
         st.sidebar.info("已选择'全部'交易对，其他选择将被忽略")
         global_selected_symbols = ["全部"]
-    
+
     # 保存到session state
     st.session_state.global_selected_symbols = global_selected_symbols
-    
-    # 2. 日期范围选择（全局）
-    min_date, max_date = st.session_state.date_range
+
+    # 2. 日期范围选择（全局）- 根据年度自动调整
+    if selected_year != "全部年份":
+        year_int = int(selected_year)
+        year_data = all_data[all_data['timestamp'].dt.year == year_int]
+        if not year_data.empty:
+            effective_min_date = year_data['timestamp'].min().date()
+            effective_max_date = year_data['timestamp'].max().date()
+        else:
+            effective_min_date = min_date
+            effective_max_date = max_date
+    else:
+        effective_min_date = min_date
+        effective_max_date = max_date
 
     # 确保默认值在有效范围内
-    default_start = max(min_date, st.session_state.global_selected_start_date)
-    default_end = min(max_date, st.session_state.global_selected_end_date)
+    default_start = max(effective_min_date, st.session_state.global_selected_start_date)
+    default_end = min(effective_max_date, st.session_state.global_selected_end_date)
 
-    # 如果默认值仍然无效，使用min_date和max_date
-    if default_start > max_date:
-        default_start = min_date
-    if default_end < min_date:
-        default_end = max_date
+    # 如果默认值仍然无效，使用有效范围
+    if default_start > effective_max_date:
+        default_start = effective_min_date
+    if default_end < effective_min_date:
+        default_end = effective_max_date
 
     global_selected_dates = st.sidebar.date_input(
         "选择日期范围",
         value=(default_start, default_end),
-        min_value=min_date,
-        max_value=max_date,
+        min_value=effective_min_date,
+        max_value=effective_max_date,
         key="sidebar_dates"
     )
-    
+
     if len(global_selected_dates) == 2:
         st.session_state.global_selected_start_date, st.session_state.global_selected_end_date = global_selected_dates
-    else: 
-        st.session_state.global_selected_start_date, st.session_state.global_selected_end_date = min_date, max_date
+    else:
+        st.session_state.global_selected_start_date, st.session_state.global_selected_end_date = effective_min_date, effective_max_date
 
 # ================================================
 # ============ 数据上传与处理页面 ============
