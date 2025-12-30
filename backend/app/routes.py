@@ -1031,6 +1031,68 @@ async def update_sim_account(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.delete("/sim-trading/accounts/{account_id}")
+async def delete_sim_account(
+    account_id: int,
+    db: Session = Depends(get_db_session)
+):
+    """
+    Delete a simulated trading account and all related data
+
+    This will permanently delete:
+    - All positions (open and closed)
+    - All trades
+    - All auto-trading logs
+    - The account itself
+    """
+    try:
+        from backend.database.models import SimAccount, SimPosition, SimTrade, AutoTradingLog
+
+        # Check if account exists
+        account = db.query(SimAccount).filter(SimAccount.id == account_id).first()
+        if not account:
+            raise HTTPException(status_code=404, detail="Account not found")
+
+        account_name = account.account_name
+
+        # Delete all related data in order
+        # 1. Delete auto trading logs
+        logs_deleted = db.query(AutoTradingLog).filter(
+            AutoTradingLog.account_id == account_id
+        ).delete()
+
+        # 2. Delete trades
+        trades_deleted = db.query(SimTrade).filter(
+            SimTrade.account_id == account_id
+        ).delete()
+
+        # 3. Delete positions
+        positions_deleted = db.query(SimPosition).filter(
+            SimPosition.account_id == account_id
+        ).delete()
+
+        # 4. Delete the account
+        db.delete(account)
+        db.commit()
+
+        return {
+            "success": True,
+            "message": f"Account '{account_name}' deleted successfully",
+            "deleted": {
+                "account_id": account_id,
+                "positions": positions_deleted,
+                "trades": trades_deleted,
+                "logs": logs_deleted
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/sim-trading/accounts/{account_id}/positions")
 async def open_sim_position(
     account_id: int,

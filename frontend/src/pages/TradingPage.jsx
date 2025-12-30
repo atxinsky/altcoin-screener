@@ -14,7 +14,9 @@ import {
   Activity,
   Zap,
   Trophy,
-  X
+  X,
+  Trash2,
+  AlertTriangle
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -40,6 +42,7 @@ import { cn, formatNumber, formatPercent, formatPrice } from '@/lib/utils'
 import {
   getSimTradingAccounts,
   createSimTradingAccount,
+  deleteSimTradingAccount,
   toggleAutoTrading,
   getAccountPositions,
   getAccountTrades,
@@ -55,6 +58,8 @@ export default function TradingPage() {
   const [logs, setLogs] = useState([])
   const [loading, setLoading] = useState(true)
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   // Form state for creating account
   const [formData, setFormData] = useState({
@@ -210,6 +215,24 @@ export default function TradingPage() {
     }
   }
 
+  const handleDeleteAccount = async () => {
+    if (!selectedAccount) return
+    try {
+      setDeleting(true)
+      await deleteSimTradingAccount(selectedAccount.id)
+      setShowDeleteModal(false)
+      setSelectedAccount(null)
+      setPositions([])
+      setTrades([])
+      setLogs([])
+      await loadAccounts()
+    } catch (error) {
+      console.error('Failed to delete account:', error)
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   const updateForm = (key, value) => {
     setFormData(prev => ({ ...prev, [key]: value }))
   }
@@ -302,6 +325,16 @@ export default function TradingPage() {
                   onCheckedChange={handleToggleAutoTrading}
                 />
               </div>
+
+              <Button
+                variant="destructive"
+                size="sm"
+                className="w-full mt-4"
+                onClick={() => setShowDeleteModal(true)}
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                DELETE ACCOUNT
+              </Button>
             </CardContent>
           </Card>
 
@@ -749,6 +782,52 @@ export default function TradingPage() {
             <Button onClick={handleCreateAccount} disabled={loading || !formData.account_name}>
               {loading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
               CREATE ACCOUNT
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Account Confirmation Modal */}
+      <Dialog open={showDeleteModal} onOpenChange={setShowDeleteModal}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-mono flex items-center gap-2 text-destructive">
+              <AlertTriangle className="w-5 h-5" />
+              DELETE ACCOUNT
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-muted-foreground mb-4">
+              Are you sure you want to delete <span className="font-bold text-foreground">{selectedAccount?.account_name}</span>?
+            </p>
+            <p className="text-sm text-muted-foreground">
+              This will permanently delete:
+            </p>
+            <ul className="text-sm text-muted-foreground mt-2 space-y-1 ml-4">
+              <li>• All positions ({positions.length} current)</li>
+              <li>• All trade history ({trades.length} trades)</li>
+              <li>• All auto-trading logs ({logs.length} logs)</li>
+              <li>• Account settings and statistics</li>
+            </ul>
+            <p className="text-destructive text-sm font-bold mt-4">
+              This action cannot be undone.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDeleteModal(false)}>
+              CANCEL
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteAccount}
+              disabled={deleting}
+            >
+              {deleting ? (
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Trash2 className="w-4 h-4 mr-2" />
+              )}
+              DELETE ACCOUNT
             </Button>
           </DialogFooter>
         </DialogContent>
