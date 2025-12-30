@@ -1963,27 +1963,32 @@ def detect_file_format(df):
     """
     if df is None or df.empty:
         return 'unknown'
-    
+
     # 获取列名
     cols = df.columns.tolist()
-    
+    cols_str = ' '.join(cols).lower()
+
     # 检查是否为欧易格式
     okx_columns = ['Date', 'Symbol', 'Bill Type', 'Side', 'Avg Price', 'Total Quantity', 'Total Fee', 'Total PnL', 'Trade Count']
     okx_match_count = sum(1 for col in okx_columns if col in cols)
-    if okx_match_count >= 5:  # 如果匹配了大部分欧易列
+    if okx_match_count >= 5:
         return 'okx'
-    
-    # 检查是否为币安格式
+
+    # 检查是否为币安格式（英文列名）
     binance_columns = ['Time(UTC)', 'Pair', 'Side', 'Price', 'Executed', 'Amount', 'Fee']
     binance_match_count = sum(1 for col in binance_columns if col in cols)
-    
-    # 也检查币安合约格式
+
+    # 币安合约格式（英文列名）
     binance_futures_columns = ['Uid', 'Time(UTC)', 'Symbol', 'Side', 'Position Side', 'Price', 'Quantity', 'Amount', 'Fee', 'Realized Profit']
     binance_futures_match_count = sum(1 for col in binance_futures_columns if col in cols)
-    
-    if binance_match_count >= 4 or binance_futures_match_count >= 4:
+
+    # 币安中文列名支持
+    binance_cn_columns = ['时间(UTC)', '时间', '交易对', '方向', '价格', '数量', '金额', '手续费', '已实现盈亏', '仓位方向']
+    binance_cn_match_count = sum(1 for col in binance_cn_columns if col in cols or any(col in c for c in cols))
+
+    if binance_match_count >= 4 or binance_futures_match_count >= 4 or binance_cn_match_count >= 4:
         return 'binance'
-    
+
     return 'unknown'
 
 # --- 函数：处理欧易数据 ---
@@ -2493,27 +2498,29 @@ if current_page == "upload":
                             # 处理 Excel 文件
                             if file_ext in ['.xlsx', '.xls']:
                                 try:
-                                    # 读取 Excel 文件，尝试读取第一个 sheet
                                     excel_file = pd.ExcelFile(file_path)
                                     sheet_names = excel_file.sheet_names
                                     st.info(f"Excel 文件包含 {len(sheet_names)} 个工作表: {sheet_names}")
 
-                                    # 如果有多个 sheet，让用户选择或合并所有
-                                    if len(sheet_names) > 1:
-                                        all_sheets_data = []
-                                        for sheet in sheet_names:
-                                            sheet_df = pd.read_excel(file_path, sheet_name=sheet, dtype=str, keep_default_na=False)
-                                            if not sheet_df.empty:
-                                                all_sheets_data.append(sheet_df)
-                                                st.write(f"  - 工作表 '{sheet}': {len(sheet_df)} 行")
-                                        if all_sheets_data:
-                                            df = pd.concat(all_sheets_data, ignore_index=True)
-                                            st.success(f"合并所有工作表，共 {len(df)} 行")
-                                    else:
-                                        df = pd.read_excel(file_path, dtype=str, keep_default_na=False)
+                                    # 智能选择工作表：优先选择包含交易记录的工作表
+                                    trade_sheet_keywords = ['交易', '逐笔', 'trade', 'order', '记录']
+                                    selected_sheet = None
 
-                                    if df is not None:
-                                        st.success(f"Excel 文件 {os.path.basename(file_path)} 读取成功")
+                                    for sheet in sheet_names:
+                                        sheet_lower = sheet.lower()
+                                        if any(kw in sheet_lower for kw in trade_sheet_keywords):
+                                            selected_sheet = sheet
+                                            break
+
+                                    # 如果没找到匹配的，使用第一个工作表
+                                    if selected_sheet is None:
+                                        selected_sheet = sheet_names[0]
+
+                                    st.info(f"自动选择工作表: '{selected_sheet}'")
+                                    df = pd.read_excel(file_path, sheet_name=selected_sheet, dtype=str, keep_default_na=False)
+
+                                    if df is not None and not df.empty:
+                                        st.success(f"Excel 文件读取成功: {len(df)} 行数据")
                                 except Exception as excel_e:
                                     st.error(f"读取 Excel 文件失败: {excel_e}")
                                     raise ValueError(f"无法读取 Excel 文件: {os.path.basename(file_path)}")
@@ -2549,8 +2556,21 @@ if current_page == "upload":
                                     st.error(f"处理欧易文件失败: {os.path.basename(file_path)}")
                             
                             elif file_format == 'binance':
-                                # 处理币安格式的文件（保持原有的处理逻辑）
-                                col_map = { 'timestamp': ['Time(UTC)'], 'symbol': ['Symbol', 'Pair'], 'side': ['Side'], 'price_orig': ['Price'], 'qty_orig': ['Quantity', 'Executed'], 'amount_orig': ['Amount'], 'fee_orig': ['Fee'], 'realized_pnl_orig': ['Realized Profit'], 'position_side': ['Position Side'], 'uid': ['Uid'], 'order_id': ['Order Id'], 'trade_id': ['Trade Id'] }
+                                # 处理币安格式的文件（支持英文和中文列名）
+                                col_map = {
+                                    'timestamp': ['Time(UTC)', '时间(UTC)', '时间'],
+                                    'symbol': ['Symbol', 'Pair', '交易对'],
+                                    'side': ['Side', '方向'],
+                                    'price_orig': ['Price', '价格'],
+                                    'qty_orig': ['Quantity', 'Executed', '数量'],
+                                    'amount_orig': ['Amount', '金额'],
+                                    'fee_orig': ['Fee', '手续费', '手续费(USDT)'],
+                                    'realized_pnl_orig': ['Realized Profit', '已实现盈亏'],
+                                    'position_side': ['Position Side', '仓位方向'],
+                                    'uid': ['Uid'],
+                                    'order_id': ['Order Id'],
+                                    'trade_id': ['Trade Id']
+                                }
                                 standard_df = pd.DataFrame()
                                 original_cols_used = {}
                                 for standard_name, potential_names in col_map.items():
