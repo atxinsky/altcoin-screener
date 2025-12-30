@@ -195,10 +195,11 @@ export default function ScreenerPage() {
     setTradeModalOpen(true)
     // Load paper accounts
     try {
-      const accounts = await getSimTradingAccounts()
-      setPaperAccounts(accounts || [])
-      if (accounts && accounts.length > 0 && !selectedPaperAccount) {
-        setSelectedPaperAccount(accounts[0].id)
+      const response = await getSimTradingAccounts()
+      const accountsList = response.accounts || []
+      setPaperAccounts(accountsList)
+      if (accountsList.length > 0 && !selectedPaperAccount) {
+        setSelectedPaperAccount(accountsList[0].id)
       }
     } catch (error) {
       console.error('Failed to load paper accounts:', error)
@@ -589,7 +590,7 @@ export default function ScreenerPage() {
                   <SelectContent>
                     {paperAccounts.map(acc => (
                       <SelectItem key={acc.id} value={acc.id.toString()}>
-                        {acc.name} (${acc.current_balance?.toFixed(2)})
+                        {acc.account_name} (${acc.current_balance?.toFixed(2) || '0.00'})
                       </SelectItem>
                     ))}
                   </SelectContent>
