@@ -7,12 +7,14 @@ from backend.app.main import app
 from backend.config import settings
 
 if __name__ == "__main__":
-    print("""
+    # Docker内部使用8000，外部映射到8001
+    port = 8000
+    print(f"""
     ╔═══════════════════════════════════════════════════════╗
     ║       Tretra Trading Station - Backend API           ║
     ║                                                       ║
-    ║  API Server: http://localhost:8001                    ║
-    ║  API Docs:   http://localhost:8001/docs               ║
+    ║  API Server: http://localhost:{port}                    ║
+    ║  API Docs:   http://localhost:{port}/docs               ║
     ║                                                       ║
     ║  Press Ctrl+C to stop                                 ║
     ╚═══════════════════════════════════════════════════════╝
@@ -21,6 +23,6 @@ if __name__ == "__main__":
     uvicorn.run(
         app,
         host="0.0.0.0",
-        port=8001,
+        port=port,
         log_level=settings.LOG_LEVEL.lower()
     )

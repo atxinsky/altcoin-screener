@@ -227,21 +227,14 @@ async def get_historical_data(
     try:
         binance = BinanceService()
 
-        # 先验证symbol是否是活跃的USDT现货交易对
-        active_symbols = binance.get_all_spot_symbols()
-        if symbol not in active_symbols:
-            raise HTTPException(
-                status_code=404,
-                detail=f"{symbol} 不是币安活跃的USDT现货交易对，可能已下架或不存在"
-            )
-
+        # 直接获取历史数据，不先验证symbol（避免API权限问题）
         df = binance.get_historical_data(
             symbol=symbol,
             timeframe=timeframe,
             days=days
         )
 
-        if df.empty:
+        if df is None or df.empty:
             raise HTTPException(
                 status_code=404,
                 detail=f"{symbol} 无法获取历史数据，请检查交易对是否正确"
@@ -279,15 +272,7 @@ async def get_indicators(
         binance = BinanceService()
         indicator_service = IndicatorService()
 
-        # 先验证symbol是否是活跃的USDT现货交易对
-        active_symbols = binance.get_all_spot_symbols()
-        if symbol not in active_symbols:
-            raise HTTPException(
-                status_code=404,
-                detail=f"{symbol} 不是币安活跃的USDT现货交易对，可能已下架或不存在"
-            )
-
-        # Fetch data
+        # 直接获取数据，不先验证symbol（避免API权限问题）
         df = binance.fetch_ohlcv(symbol, timeframe, limit=500)
 
         if df.empty:

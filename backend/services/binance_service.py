@@ -10,6 +10,7 @@ class BinanceService:
     """Service for interacting with Binance API"""
 
     def __init__(self):
+        # 带API密钥的客户端 - 用于交易、余额查询等需要认证的操作
         self.exchange = ccxt.binance({
             'apiKey': settings.BINANCE_API_KEY,
             'secret': settings.BINANCE_API_SECRET,
@@ -19,10 +20,19 @@ class BinanceService:
             }
         })
 
+        # 不带API密钥的公开客户端 - 用于获取K线、市场数据等公开信息
+        # 避免因API密钥IP白名单限制导致公开数据请求失败
+        self.public_exchange = ccxt.binance({
+            'enableRateLimit': True,
+            'options': {
+                'defaultType': 'spot',
+            }
+        })
+
     def get_all_spot_symbols(self) -> List[str]:
         """Get all ACTIVE spot trading symbols from Binance"""
         try:
-            markets = self.exchange.load_markets()
+            markets = self.public_exchange.load_markets()
             # Filter for USDT spot pairs that are ACTIVE, exclude leveraged tokens
             symbols = [
                 symbol for symbol, market in markets.items()
@@ -68,7 +78,8 @@ class BinanceService:
             DataFrame with OHLCV data
         """
         try:
-            ohlcv = self.exchange.fetch_ohlcv(symbol, timeframe, since, limit)
+            # 使用公开客户端获取K线数据（不需要API密钥）
+            ohlcv = self.public_exchange.fetch_ohlcv(symbol, timeframe, since, limit)
             df = pd.DataFrame(
                 ohlcv,
                 columns=['timestamp', 'open', 'high', 'low', 'close', 'volume']
@@ -87,7 +98,8 @@ class BinanceService:
     def fetch_ticker(self, symbol: str) -> Dict:
         """Fetch current ticker data"""
         try:
-            ticker = self.exchange.fetch_ticker(symbol)
+            # 使用公开客户端获取ticker数据
+            ticker = self.public_exchange.fetch_ticker(symbol)
             return ticker
         except Exception as e:
             print(f"Error fetching ticker for {symbol}: {e}")
@@ -96,7 +108,8 @@ class BinanceService:
     def fetch_24h_tickers(self) -> Dict[str, Dict]:
         """Fetch 24h ticker data for all symbols"""
         try:
-            tickers = self.exchange.fetch_tickers()
+            # 使用公开客户端获取所有ticker数据
+            tickers = self.public_exchange.fetch_tickers()
             return tickers
         except Exception as e:
             print(f"Error fetching 24h tickers: {e}")
@@ -120,13 +133,14 @@ class BinanceService:
             DataFrame with historical OHLCV data
         """
         all_data = []
-        since = self.exchange.parse8601(
+        # 使用公开客户端获取历史数据
+        since = self.public_exchange.parse8601(
             (datetime.utcnow() - timedelta(days=days)).isoformat()
         )
 
         while True:
             try:
-                ohlcv = self.exchange.fetch_ohlcv(symbol, timeframe, since, 1000)
+                ohlcv = self.public_exchange.fetch_ohlcv(symbol, timeframe, since, 1000)
                 if not ohlcv:
                     break
 
