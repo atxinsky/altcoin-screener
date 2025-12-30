@@ -2474,7 +2474,7 @@ if current_page == "upload":
         **币安合约:** `Uid`, `Time(UTC)`, `Symbol`, `Side`, `Position Side`, `Price`, `Quantity`, `Amount`, `Fee`, `Realized Profit`
         **欧易:** `Date`, `Symbol`, `Bill Type`, `Side`, `Avg Price`, `Total Quantity`, `Total Fee`, `Total PnL`, `Trade Count`
         """)
-    uploaded_files = st.file_uploader("上传交易数据CSV文件", type="csv", accept_multiple_files=True)
+    uploaded_files = st.file_uploader("上传交易数据文件", type=["csv", "xlsx", "xls"], accept_multiple_files=True, help="支持 CSV 和 Excel 格式")
     if uploaded_files:
         temp_paths = []
         for uploaded_file in uploaded_files:
@@ -2487,16 +2487,49 @@ if current_page == "upload":
                     all_data = []
                     for file_path in temp_paths:
                         try:
-                            encodings_to_try = ['utf-8', 'gbk', 'gb2312', 'gb18030', 'latin1']
                             df = None
-                            for encoding in encodings_to_try:
+                            file_ext = os.path.splitext(file_path)[1].lower()
+
+                            # 处理 Excel 文件
+                            if file_ext in ['.xlsx', '.xls']:
                                 try:
-                                    df = pd.read_csv(file_path, encoding=encoding, dtype=str, keep_default_na=False)
-                                    st.success(f"文件 {os.path.basename(file_path)} 使用 {encoding} 编码成功读取")
-                                    break
-                                except UnicodeDecodeError: continue
-                                except Exception as read_e: st.warning(f"使用 {encoding} 读取 {os.path.basename(file_path)} 时出错: {read_e}"); continue
-                            if df is None: raise ValueError(f"无法使用支持的编码读取文件: {os.path.basename(file_path)}")
+                                    # 读取 Excel 文件，尝试读取第一个 sheet
+                                    excel_file = pd.ExcelFile(file_path)
+                                    sheet_names = excel_file.sheet_names
+                                    st.info(f"Excel 文件包含 {len(sheet_names)} 个工作表: {sheet_names}")
+
+                                    # 如果有多个 sheet，让用户选择或合并所有
+                                    if len(sheet_names) > 1:
+                                        all_sheets_data = []
+                                        for sheet in sheet_names:
+                                            sheet_df = pd.read_excel(file_path, sheet_name=sheet, dtype=str, keep_default_na=False)
+                                            if not sheet_df.empty:
+                                                all_sheets_data.append(sheet_df)
+                                                st.write(f"  - 工作表 '{sheet}': {len(sheet_df)} 行")
+                                        if all_sheets_data:
+                                            df = pd.concat(all_sheets_data, ignore_index=True)
+                                            st.success(f"合并所有工作表，共 {len(df)} 行")
+                                    else:
+                                        df = pd.read_excel(file_path, dtype=str, keep_default_na=False)
+
+                                    if df is not None:
+                                        st.success(f"Excel 文件 {os.path.basename(file_path)} 读取成功")
+                                except Exception as excel_e:
+                                    st.error(f"读取 Excel 文件失败: {excel_e}")
+                                    raise ValueError(f"无法读取 Excel 文件: {os.path.basename(file_path)}")
+
+                            # 处理 CSV 文件
+                            else:
+                                encodings_to_try = ['utf-8', 'gbk', 'gb2312', 'gb18030', 'latin1']
+                                for encoding in encodings_to_try:
+                                    try:
+                                        df = pd.read_csv(file_path, encoding=encoding, dtype=str, keep_default_na=False)
+                                        st.success(f"文件 {os.path.basename(file_path)} 使用 {encoding} 编码成功读取")
+                                        break
+                                    except UnicodeDecodeError: continue
+                                    except Exception as read_e: st.warning(f"使用 {encoding} 读取 {os.path.basename(file_path)} 时出错: {read_e}"); continue
+
+                            if df is None: raise ValueError(f"无法读取文件: {os.path.basename(file_path)}")
 
                             df.columns = df.columns.str.strip()
                             cols = df.columns.tolist()
