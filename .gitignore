@@ -55,6 +55,7 @@ charts/
 # OS
 .DS_Store
 Thumbs.db
+nul
 
 # Node
 node_modules/

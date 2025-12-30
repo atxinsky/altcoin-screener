@@ -53,7 +53,7 @@ docker-compose up -d
    ```
 
 5. **访问Web界面**
-   - 打开浏览器访问 http://localhost:8000
+   - 打开浏览器访问 http://localhost:3000
 
 ### 仅命令行使用
 

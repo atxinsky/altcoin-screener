@@ -45,7 +45,7 @@ const SimTradingPanel = () => {
   const [createModalVisible, setCreateModalVisible] = useState(false);
   const [form] = Form.useForm();
 
-  const API_BASE = 'http://localhost:8001/api';
+  const API_BASE = '/api';
 
   // Load accounts on mount
   useEffect(() => {

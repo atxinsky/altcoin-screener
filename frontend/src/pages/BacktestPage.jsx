@@ -25,7 +25,7 @@ export default function BacktestPage() {
         </p>
         <Button
           size="lg"
-          onClick={() => window.open('http://localhost:8502', '_blank')}
+          onClick={() => window.open('http://localhost:8501', '_blank')}
         >
           <ExternalLink className="w-4 h-4 mr-2" />
           OPEN IN NEW TAB

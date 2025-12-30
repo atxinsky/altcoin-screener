@@ -11,8 +11,8 @@ if __name__ == "__main__":
     ╔═══════════════════════════════════════════════════════╗
     ║       Tretra Trading Station - Backend API           ║
     ║                                                       ║
-    ║  API Server: http://localhost:8000                    ║
-    ║  API Docs:   http://localhost:8000/docs               ║
+    ║  API Server: http://localhost:8001                    ║
+    ║  API Docs:   http://localhost:8001/docs               ║
     ║                                                       ║
     ║  Press Ctrl+C to stop                                 ║
     ╚═══════════════════════════════════════════════════════╝
@@ -21,6 +21,6 @@ if __name__ == "__main__":
     uvicorn.run(
         app,
         host="0.0.0.0",
-        port=8000,
+        port=8001,
         log_level=settings.LOG_LEVEL.lower()
     )
