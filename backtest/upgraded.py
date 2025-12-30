@@ -2225,7 +2225,7 @@ def process_okx_data(df):
 
 # Set page config FIRST
 st.set_page_config(
-    page_title="交易数据高级分析系统",
+    page_title="交易数据分析",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -2289,7 +2289,7 @@ if 'date_range' not in st.session_state: st.session_state.date_range = None
 if 'selected_tab' not in st.session_state: st.session_state.selected_tab = "upload"
 
 # Title
-st.markdown('<h1 class="main-header">交易数据高级分析系统</h1>', unsafe_allow_html=True)
+st.markdown('<h1 class="main-header">交易数据分析</h1>', unsafe_allow_html=True)
 
 # Sidebar navigation
 st.sidebar.title("导航菜单")
@@ -3287,7 +3287,7 @@ elif current_page == "strategy":
 # All pages are done, now add the footer outside the if/elif structure
 # 页脚
 st.markdown("---")
-st.caption("交易数据高级分析系统 © 2025 | 版本 3.1")
+st.caption("交易数据分析 © 2025 | 版本 3.1")
 
 # 添加一个新的函数用于清理K线缓存
 def clear_kline_cache(symbol=None):
