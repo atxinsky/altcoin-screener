@@ -45,7 +45,8 @@ import {
   createMarketOrder,
   createLimitOrder,
   getSimTradingAccounts,
-  openSimPosition
+  openSimPosition,
+  getBalance
 } from '@/services/api'
 import KlineChart from '@/components/KlineChart'
 
@@ -78,6 +79,12 @@ export default function ScreenerPage() {
   const [paperAccounts, setPaperAccounts] = useState([])
   const [selectedPaperAccount, setSelectedPaperAccount] = useState(null)
   const [tradeLoading, setTradeLoading] = useState(false)
+  const [quantityMode, setQuantityMode] = useState('coin') // 'coin' or 'usdt'
+  const [usdtAmount, setUsdtAmount] = useState('')
+  const [currentPrice, setCurrentPrice] = useState(0)
+  const [coinBalance, setCoinBalance] = useState(0)
+  const [usdtBalance, setUsdtBalance] = useState(0)
+  const [balanceLoading, setBalanceLoading] = useState(false)
 
   // Watchlist
   const [watchlist, setWatchlist] = useState(new Set())
@@ -190,9 +197,21 @@ export default function ScreenerPage() {
     setTradeSymbol(symbol)
     setTradeSide('BUY')
     setTradeQuantity('')
+    setUsdtAmount('')
     setLimitPrice('')
     setOrderType('market')
+    setQuantityMode('coin')
+    setCoinBalance(0)
+    setUsdtBalance(0)
+    setCurrentPrice(0)
     setTradeModalOpen(true)
+
+    // Get current price from results
+    const symbolData = results.find(r => r.symbol === symbol)
+    if (symbolData?.current_price) {
+      setCurrentPrice(symbolData.current_price)
+    }
+
     // Load paper accounts
     try {
       const response = await getSimTradingAccounts()
@@ -203,6 +222,26 @@ export default function ScreenerPage() {
       }
     } catch (error) {
       console.error('Failed to load paper accounts:', error)
+    }
+
+    // Load wallet balances for real trading
+    setBalanceLoading(true)
+    try {
+      // Extract base asset from symbol (e.g., "LUMIA/USDT" -> "LUMIA")
+      const baseAsset = symbol.split('/')[0]
+
+      // Fetch USDT and coin balances in parallel
+      const [usdtRes, coinRes] = await Promise.all([
+        getBalance('USDT'),
+        getBalance(baseAsset)
+      ])
+
+      setUsdtBalance(usdtRes.balance?.free || 0)
+      setCoinBalance(coinRes.balance?.free || 0)
+    } catch (error) {
+      console.error('Failed to load balances:', error)
+    } finally {
+      setBalanceLoading(false)
     }
   }
 
@@ -220,21 +259,44 @@ export default function ScreenerPage() {
         await openSimPosition(selectedPaperAccount, tradeSymbol)
         alert(`Paper trade opened: ${tradeSymbol}`)
       } else {
-        // Real trading
-        if (!tradeQuantity) {
-          alert('Please enter quantity')
-          return
+        // Real trading - calculate quantity based on mode
+        let finalQuantity = 0
+
+        if (quantityMode === 'usdt') {
+          // Convert USDT amount to coin quantity
+          if (!usdtAmount || parseFloat(usdtAmount) <= 0) {
+            alert('Please enter USDT amount')
+            setTradeLoading(false)
+            return
+          }
+          const priceToUse = orderType === 'limit' && limitPrice ? parseFloat(limitPrice) : currentPrice
+          if (!priceToUse || priceToUse <= 0) {
+            alert('Unable to calculate quantity: price not available')
+            setTradeLoading(false)
+            return
+          }
+          finalQuantity = parseFloat(usdtAmount) / priceToUse
+        } else {
+          // Direct coin quantity
+          if (!tradeQuantity || parseFloat(tradeQuantity) <= 0) {
+            alert('Please enter quantity')
+            setTradeLoading(false)
+            return
+          }
+          finalQuantity = parseFloat(tradeQuantity)
         }
+
         if (orderType === 'market') {
-          await createMarketOrder(tradeSymbol, tradeSide, parseFloat(tradeQuantity), 'Quick Trade')
+          await createMarketOrder(tradeSymbol, tradeSide, finalQuantity, 'Quick Trade')
         } else {
           if (!limitPrice) {
             alert('Please enter limit price')
+            setTradeLoading(false)
             return
           }
-          await createLimitOrder(tradeSymbol, tradeSide, parseFloat(tradeQuantity), parseFloat(limitPrice), 'Quick Trade')
+          await createLimitOrder(tradeSymbol, tradeSide, finalQuantity, parseFloat(limitPrice), 'Quick Trade')
         }
-        alert(`${orderType === 'market' ? 'Market' : 'Limit'} order submitted`)
+        alert(`${orderType === 'market' ? 'Market' : 'Limit'} order submitted (${finalQuantity.toFixed(6)} ${tradeSymbol.split('/')[0]})`)
       }
       setTradeModalOpen(false)
     } catch (error) {
@@ -604,6 +666,38 @@ export default function ScreenerPage() {
             ) : (
               /* Real Trading Options */
               <>
+                {/* Wallet Balance Display */}
+                <div className="p-3 bg-muted/50 rounded-lg border border-border">
+                  <div className="text-xs font-mono text-muted-foreground mb-2">WALLET BALANCE</div>
+                  {balanceLoading ? (
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <RefreshCw className="w-3 h-3 animate-spin" />
+                      Loading...
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <div className="text-xs text-muted-foreground">USDT</div>
+                        <div className="font-mono font-bold text-profit">
+                          {usdtBalance.toFixed(2)}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-xs text-muted-foreground">{tradeSymbol?.split('/')[0] || 'COIN'}</div>
+                        <div className="font-mono font-bold">
+                          {coinBalance > 0 ? coinBalance.toFixed(6) : '0'}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {currentPrice > 0 && (
+                    <div className="mt-2 pt-2 border-t border-border">
+                      <div className="text-xs text-muted-foreground">Current Price</div>
+                      <div className="font-mono text-sm">${formatPrice(currentPrice)}</div>
+                    </div>
+                  )}
+                </div>
+
                 {/* Order Type Selector */}
                 <div>
                   <label className="text-xs font-mono text-muted-foreground mb-2 block">
@@ -651,19 +745,79 @@ export default function ScreenerPage() {
                   </Select>
                 </div>
 
-                {/* Quantity */}
+                {/* Quantity Mode Toggle */}
                 <div>
                   <label className="text-xs font-mono text-muted-foreground mb-2 block">
-                    QUANTITY
+                    INPUT MODE
                   </label>
-                  <Input
-                    type="number"
-                    value={tradeQuantity}
-                    onChange={(e) => setTradeQuantity(e.target.value)}
-                    placeholder="Enter quantity"
-                    step={0.0001}
-                  />
+                  <div className="flex gap-2">
+                    <button
+                      className={cn(
+                        "flex-1 py-2 px-4 rounded-md text-sm font-mono border transition-all",
+                        quantityMode === 'usdt'
+                          ? "border-[#6Ec85c] bg-[#6Ec85c]/10 text-[#6Ec85c]"
+                          : "border-border text-muted-foreground hover:text-foreground"
+                      )}
+                      onClick={() => setQuantityMode('usdt')}
+                    >
+                      USDT AMOUNT
+                    </button>
+                    <button
+                      className={cn(
+                        "flex-1 py-2 px-4 rounded-md text-sm font-mono border transition-all",
+                        quantityMode === 'coin'
+                          ? "border-[#D4A0FF] bg-[#D4A0FF]/10 text-[#D4A0FF]"
+                          : "border-border text-muted-foreground hover:text-foreground"
+                      )}
+                      onClick={() => setQuantityMode('coin')}
+                    >
+                      COIN QTY
+                    </button>
+                  </div>
                 </div>
+
+                {/* Quantity Input - based on mode */}
+                {quantityMode === 'usdt' ? (
+                  <div>
+                    <label className="text-xs font-mono text-muted-foreground mb-2 block">
+                      USDT AMOUNT
+                    </label>
+                    <Input
+                      type="number"
+                      value={usdtAmount}
+                      onChange={(e) => setUsdtAmount(e.target.value)}
+                      placeholder="Enter USDT amount"
+                      step={0.01}
+                    />
+                    {usdtAmount && currentPrice > 0 && (
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        Est. quantity: <span className="text-foreground font-mono">
+                          {(parseFloat(usdtAmount) / currentPrice).toFixed(6)} {tradeSymbol?.split('/')[0]}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div>
+                    <label className="text-xs font-mono text-muted-foreground mb-2 block">
+                      QUANTITY ({tradeSymbol?.split('/')[0] || 'COIN'})
+                    </label>
+                    <Input
+                      type="number"
+                      value={tradeQuantity}
+                      onChange={(e) => setTradeQuantity(e.target.value)}
+                      placeholder="Enter quantity"
+                      step={0.0001}
+                    />
+                    {tradeQuantity && currentPrice > 0 && (
+                      <div className="mt-1 text-xs text-muted-foreground">
+                        Est. value: <span className="text-foreground font-mono">
+                          ${(parseFloat(tradeQuantity) * currentPrice).toFixed(2)} USDT
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Limit Price (only for limit orders) */}
                 {orderType === 'limit' && (
