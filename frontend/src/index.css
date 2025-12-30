@@ -1,65 +1,193 @@
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Light theme - Ledger style */
+    --background: 0 0% 100%;
+    --foreground: 0 0% 0%;
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 0%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 0%;
+    --primary: 270 100% 81%; /* Ledger Purple #D4A0FF */
+    --primary-foreground: 0 0% 0%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 0 0% 0%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 270 100% 81%;
+    --accent-foreground: 0 0% 0%;
+    --destructive: 348 100% 45%; /* Ledger Red #e40046 */
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --ring: 270 100% 81%;
+    --radius: 0px; /* Sharp corners for Ledger style */
+  }
+
+  .dark {
+    /* Dark theme - Trading focused */
+    --background: 0 0% 4%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 6%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 6%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 270 100% 81%; /* Ledger Purple */
+    --primary-foreground: 0 0% 0%;
+    --secondary: 0 0% 15%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 64%;
+    --accent: 270 100% 81%;
+    --accent-foreground: 0 0% 0%;
+    --destructive: 348 100% 45%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 20%;
+    --input: 0 0% 15%;
+    --ring: 270 100% 81%;
+  }
 }
 
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  background-color: #f0f2f5;
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: "Space Grotesk", system-ui, sans-serif;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Ledger-style headings */
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-bold tracking-tight;
+    letter-spacing: -0.03em;
+  }
+
+  /* Mono font for numbers/code */
+  .font-mono {
+    font-family: "JetBrains Mono", monospace;
+  }
 }
 
-code {
-  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
-    monospace;
+@layer components {
+  /* Ledger-style dashed border */
+  .border-dashed-ledger {
+    border: 2px dashed;
+    @apply border-foreground;
+  }
+
+  /* Grid background pattern */
+  .bg-grid {
+    background-image:
+      linear-gradient(0deg, transparent 24%, rgba(255,255,255,.03) 25%, rgba(255,255,255,.03) 26%, transparent 27%, transparent 74%, rgba(255,255,255,.03) 75%, rgba(255,255,255,.03) 76%, transparent 77%, transparent),
+      linear-gradient(90deg, transparent 24%, rgba(255,255,255,.03) 25%, rgba(255,255,255,.03) 26%, transparent 27%, transparent 74%, rgba(255,255,255,.03) 75%, rgba(255,255,255,.03) 76%, transparent 77%, transparent);
+    background-size: 50px 50px;
+  }
+
+  /* Light effect gradient */
+  .bg-light-rays {
+    background: radial-gradient(ellipse at top, rgba(212, 160, 255, 0.15) 0%, transparent 60%);
+  }
+
+  /* Profit/Loss colors */
+  .text-profit {
+    @apply text-[#6Ec85c];
+  }
+  .text-loss {
+    @apply text-[#e40046];
+  }
+  .bg-profit {
+    @apply bg-[#6Ec85c];
+  }
+  .bg-loss {
+    @apply bg-[#e40046];
+  }
+
+  /* Trading card style */
+  .trading-card {
+    @apply bg-card border-2 border-border p-6 transition-all duration-200;
+  }
+  .trading-card:hover {
+    @apply border-primary;
+  }
+
+  /* Status badge */
+  .status-badge {
+    @apply inline-flex items-center px-2 py-1 text-xs font-mono font-medium;
+  }
+  .status-badge-success {
+    @apply status-badge bg-[#6Ec85c]/10 text-[#6Ec85c] border border-[#6Ec85c]/30;
+  }
+  .status-badge-error {
+    @apply status-badge bg-[#e40046]/10 text-[#e40046] border border-[#e40046]/30;
+  }
+  .status-badge-warning {
+    @apply status-badge bg-[#FF5300]/10 text-[#FF5300] border border-[#FF5300]/30;
+  }
+  .status-badge-info {
+    @apply status-badge bg-primary/10 text-primary border border-primary/30;
+  }
+
+  /* Data table styling */
+  .data-table {
+    @apply w-full;
+  }
+  .data-table th {
+    @apply text-left text-xs font-mono font-medium text-muted-foreground uppercase tracking-wider py-3 px-4 border-b border-border;
+  }
+  .data-table td {
+    @apply py-3 px-4 border-b border-border text-sm;
+  }
+  .data-table tr:hover {
+    @apply bg-muted/50;
+  }
+
+  /* Ledger button styles */
+  .btn-ledger {
+    @apply px-6 py-3 font-bold text-sm tracking-wider border-2 transition-all duration-200;
+  }
+  .btn-ledger-primary {
+    @apply btn-ledger bg-foreground text-background border-foreground hover:bg-primary hover:text-foreground hover:border-primary;
+  }
+  .btn-ledger-outline {
+    @apply btn-ledger bg-transparent text-foreground border-foreground hover:bg-foreground hover:text-background;
+  }
+  .btn-ledger-purple {
+    @apply btn-ledger bg-primary text-black border-primary hover:bg-white hover:text-black hover:border-white;
+  }
+
+  /* Input styles */
+  .input-ledger {
+    @apply w-full px-4 py-3 bg-input border-2 border-border text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary transition-colors;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-background;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply bg-border rounded-full;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground;
+  }
 }
 
-.app-header {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: 20px;
-  color: white;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-}
-
-.app-container {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 20px;
-}
-
-.screening-card {
-  margin-bottom: 20px;
-}
-
-.stats-card {
-  text-align: center;
-  padding: 10px;
-}
-
-.stats-value {
-  font-size: 24px;
-  font-weight: bold;
-  color: #1890ff;
-}
-
-.stats-label {
-  font-size: 14px;
-  color: #666;
-  margin-top: 5px;
-}
-
-.signal-tag {
-  margin: 2px;
-}
-
-.high-score {
-  background-color: #f6ffed;
-}
-
-.medium-score {
-  background-color: #fffbe6;
+/* K-line chart theme override */
+.klinecharts-pro {
+  --klinecharts-pro-primary-color: #D4A0FF !important;
+  --klinecharts-pro-background-color: hsl(0 0% 6%) !important;
+  --klinecharts-pro-text-color: hsl(0 0% 98%) !important;
 }

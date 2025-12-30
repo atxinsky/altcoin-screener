@@ -6,10 +6,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    container_name: tretra-backend
+    container_name: ledger-backend
     restart: unless-stopped
     ports:
-      - "8001:8000"
+      - "8002:8000"
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
@@ -18,7 +18,7 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
     networks:
-      - screener-network
+      - ledger-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
@@ -30,7 +30,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.monitor
-    container_name: tretra-monitor
+    container_name: ledger-monitor
     restart: unless-stopped
     volumes:
       - ./data:/app/data
@@ -40,7 +40,7 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
     networks:
-      - screener-network
+      - ledger-network
     depends_on:
       - backend
 
@@ -49,10 +49,10 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.backtest
-    container_name: tretra-backtest
+    container_name: ledger-backtest
     restart: unless-stopped
     ports:
-      - "8501:8501"
+      - "8502:8501"
     volumes:
       - ./data:/app/data
       - ./backtest/Trade data:/app/backtest/Trade data
@@ -60,7 +60,7 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
     networks:
-      - screener-network
+      - ledger-network
     depends_on:
       - backend
 
@@ -69,18 +69,18 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.frontend
-    container_name: tretra-frontend
+    container_name: ledger-frontend
     restart: unless-stopped
     ports:
-      - "3000:80"
+      - "3001:80"
     networks:
-      - screener-network
+      - ledger-network
     depends_on:
       - backend
       - backtest
 
 networks:
-  screener-network:
+  ledger-network:
     driver: bridge
 
 volumes:
