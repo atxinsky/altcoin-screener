@@ -220,6 +220,14 @@ export const getAccountPositions = async (accountId) => {
   return response.data
 }
 
+export const openSimPosition = async (accountId, symbol, entryPrice = null) => {
+  const response = await api.post(`/sim-trading/accounts/${accountId}/positions`, {
+    symbol,
+    entry_price: entryPrice
+  })
+  return response.data
+}
+
 export const closePosition = async (positionId, exitPrice = null) => {
   const response = await api.delete(`/sim-trading/positions/${positionId}`, {
     params: exitPrice ? { exit_price: exitPrice } : {}

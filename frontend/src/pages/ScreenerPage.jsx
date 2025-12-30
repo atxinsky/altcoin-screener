@@ -42,7 +42,10 @@ import {
   getTopOpportunities,
   addToWatchlist,
   removeFromWatchlist,
-  createMarketOrder
+  createMarketOrder,
+  createLimitOrder,
+  getSimTradingAccounts,
+  openSimPosition
 } from '@/services/api'
 import KlineChart from '@/components/KlineChart'
 
@@ -69,6 +72,12 @@ export default function ScreenerPage() {
   const [tradeSymbol, setTradeSymbol] = useState(null)
   const [tradeSide, setTradeSide] = useState('BUY')
   const [tradeQuantity, setTradeQuantity] = useState('')
+  const [tradeMode, setTradeMode] = useState('paper') // 'paper' or 'real'
+  const [orderType, setOrderType] = useState('market') // 'market' or 'limit'
+  const [limitPrice, setLimitPrice] = useState('')
+  const [paperAccounts, setPaperAccounts] = useState([])
+  const [selectedPaperAccount, setSelectedPaperAccount] = useState(null)
+  const [tradeLoading, setTradeLoading] = useState(false)
 
   // Watchlist
   const [watchlist, setWatchlist] = useState(new Set())
@@ -177,20 +186,61 @@ export default function ScreenerPage() {
     }
   }
 
-  const handleOpenTrade = (symbol) => {
+  const handleOpenTrade = async (symbol) => {
     setTradeSymbol(symbol)
     setTradeSide('BUY')
     setTradeQuantity('')
+    setLimitPrice('')
+    setOrderType('market')
     setTradeModalOpen(true)
+    // Load paper accounts
+    try {
+      const accounts = await getSimTradingAccounts()
+      setPaperAccounts(accounts || [])
+      if (accounts && accounts.length > 0 && !selectedPaperAccount) {
+        setSelectedPaperAccount(accounts[0].id)
+      }
+    } catch (error) {
+      console.error('Failed to load paper accounts:', error)
+    }
   }
 
   const handleSubmitTrade = async () => {
-    if (!tradeQuantity || !tradeSymbol) return
+    if (!tradeSymbol) return
+
+    setTradeLoading(true)
     try {
-      await createMarketOrder(tradeSymbol, tradeSide, parseFloat(tradeQuantity), 'Quick Trade')
+      if (tradeMode === 'paper') {
+        // Paper trading - open sim position
+        if (!selectedPaperAccount) {
+          alert('Please select a paper trading account')
+          return
+        }
+        await openSimPosition(selectedPaperAccount, tradeSymbol)
+        alert(`Paper trade opened: ${tradeSymbol}`)
+      } else {
+        // Real trading
+        if (!tradeQuantity) {
+          alert('Please enter quantity')
+          return
+        }
+        if (orderType === 'market') {
+          await createMarketOrder(tradeSymbol, tradeSide, parseFloat(tradeQuantity), 'Quick Trade')
+        } else {
+          if (!limitPrice) {
+            alert('Please enter limit price')
+            return
+          }
+          await createLimitOrder(tradeSymbol, tradeSide, parseFloat(tradeQuantity), parseFloat(limitPrice), 'Quick Trade')
+        }
+        alert(`${orderType === 'market' ? 'Market' : 'Limit'} order submitted`)
+      }
       setTradeModalOpen(false)
     } catch (error) {
       console.error('Trade failed:', error)
+      alert(`Trade failed: ${error.message || 'Unknown error'}`)
+    } finally {
+      setTradeLoading(false)
     }
   }
 
@@ -497,40 +547,155 @@ export default function ScreenerPage() {
             <DialogTitle className="font-mono">QUICK TRADE - {tradeSymbol}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-4">
-            <div>
-              <label className="text-xs font-mono text-muted-foreground mb-2 block">
-                SIDE
-              </label>
-              <Select value={tradeSide} onValueChange={setTradeSide}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="BUY">BUY</SelectItem>
-                  <SelectItem value="SELL">SELL</SelectItem>
-                </SelectContent>
-              </Select>
+            {/* Trade Mode Selector */}
+            <div className="flex gap-2 p-1 bg-muted rounded-lg">
+              <button
+                className={cn(
+                  "flex-1 py-2 px-4 rounded-md text-sm font-mono transition-all",
+                  tradeMode === 'paper'
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+                onClick={() => setTradeMode('paper')}
+              >
+                PAPER TRADING
+              </button>
+              <button
+                className={cn(
+                  "flex-1 py-2 px-4 rounded-md text-sm font-mono transition-all",
+                  tradeMode === 'real'
+                    ? "bg-[#e40046] text-white"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+                onClick={() => setTradeMode('real')}
+              >
+                REAL TRADING
+              </button>
             </div>
-            <div>
-              <label className="text-xs font-mono text-muted-foreground mb-2 block">
-                QUANTITY
-              </label>
-              <Input
-                type="number"
-                value={tradeQuantity}
-                onChange={(e) => setTradeQuantity(e.target.value)}
-                placeholder="Enter quantity"
-                step={0.0001}
-              />
-            </div>
+
+            {tradeMode === 'paper' ? (
+              /* Paper Trading Options */
+              <div>
+                <label className="text-xs font-mono text-muted-foreground mb-2 block">
+                  SELECT ACCOUNT
+                </label>
+                <Select
+                  value={selectedPaperAccount?.toString() || ''}
+                  onValueChange={(v) => setSelectedPaperAccount(parseInt(v))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select account..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {paperAccounts.map(acc => (
+                      <SelectItem key={acc.id} value={acc.id.toString()}>
+                        {acc.name} (${acc.current_balance?.toFixed(2)})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {paperAccounts.length === 0 && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    No paper accounts. Create one in Trading page.
+                  </p>
+                )}
+              </div>
+            ) : (
+              /* Real Trading Options */
+              <>
+                {/* Order Type Selector */}
+                <div>
+                  <label className="text-xs font-mono text-muted-foreground mb-2 block">
+                    ORDER TYPE
+                  </label>
+                  <div className="flex gap-2">
+                    <button
+                      className={cn(
+                        "flex-1 py-2 px-4 rounded-md text-sm font-mono border transition-all",
+                        orderType === 'market'
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border text-muted-foreground hover:text-foreground"
+                      )}
+                      onClick={() => setOrderType('market')}
+                    >
+                      MARKET
+                    </button>
+                    <button
+                      className={cn(
+                        "flex-1 py-2 px-4 rounded-md text-sm font-mono border transition-all",
+                        orderType === 'limit'
+                          ? "border-primary bg-primary/10 text-primary"
+                          : "border-border text-muted-foreground hover:text-foreground"
+                      )}
+                      onClick={() => setOrderType('limit')}
+                    >
+                      LIMIT
+                    </button>
+                  </div>
+                </div>
+
+                {/* Side Selection */}
+                <div>
+                  <label className="text-xs font-mono text-muted-foreground mb-2 block">
+                    SIDE
+                  </label>
+                  <Select value={tradeSide} onValueChange={setTradeSide}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="BUY">BUY</SelectItem>
+                      <SelectItem value="SELL">SELL</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Quantity */}
+                <div>
+                  <label className="text-xs font-mono text-muted-foreground mb-2 block">
+                    QUANTITY
+                  </label>
+                  <Input
+                    type="number"
+                    value={tradeQuantity}
+                    onChange={(e) => setTradeQuantity(e.target.value)}
+                    placeholder="Enter quantity"
+                    step={0.0001}
+                  />
+                </div>
+
+                {/* Limit Price (only for limit orders) */}
+                {orderType === 'limit' && (
+                  <div>
+                    <label className="text-xs font-mono text-muted-foreground mb-2 block">
+                      LIMIT PRICE
+                    </label>
+                    <Input
+                      type="number"
+                      value={limitPrice}
+                      onChange={(e) => setLimitPrice(e.target.value)}
+                      placeholder="Enter limit price"
+                      step={0.00000001}
+                    />
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Submit Buttons */}
             <div className="flex gap-2 pt-4">
               <Button
                 onClick={handleSubmitTrade}
                 className="flex-1"
-                variant={tradeSide === 'BUY' ? 'default' : 'destructive'}
+                variant={tradeMode === 'paper' ? 'default' : (tradeSide === 'BUY' ? 'default' : 'destructive')}
+                disabled={tradeLoading}
               >
-                <ShoppingCart className="w-4 h-4 mr-2" />
-                SUBMIT {tradeSide}
+                {tradeLoading ? (
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <ShoppingCart className="w-4 h-4 mr-2" />
+                )}
+                {tradeMode === 'paper' ? 'OPEN POSITION' : `SUBMIT ${tradeSide}`}
               </Button>
               <Button variant="outline" onClick={() => setTradeModalOpen(false)}>
                 CANCEL
