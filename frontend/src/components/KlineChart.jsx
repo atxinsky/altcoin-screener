@@ -1,8 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react'
-import { Spin, Select, Space, Tag, message } from 'antd'
-import { getHistoricalData, getIndicators } from '../services/api'
-
-const { Option } = Select
+import { RefreshCw } from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { cn } from '@/lib/utils'
+import { getHistoricalData, getIndicators } from '@/services/api'
 
 const KlineChart = ({ symbol, initialTimeframe = '5m' }) => {
   const chartRef = useRef(null)
@@ -23,16 +30,80 @@ const KlineChart = ({ symbol, initialTimeframe = '5m' }) => {
         const klinecharts = await import('klinecharts')
 
         if (chartRef.current && !chartInstance.current && mounted) {
-          // 创建图表实例（只创建一次）
           chartInstance.current = klinecharts.init(chartRef.current, {
-            timezone: 'Asia/Shanghai',  // 设置为北京时间 (UTC+8)
-            locale: 'zh-CN'
+            timezone: 'Asia/Shanghai',
+            locale: 'zh-CN',
+            styles: {
+              grid: {
+                show: true,
+                horizontal: {
+                  color: 'rgba(255, 255, 255, 0.05)'
+                },
+                vertical: {
+                  color: 'rgba(255, 255, 255, 0.05)'
+                }
+              },
+              candle: {
+                bar: {
+                  upColor: '#6Ec85c',
+                  downColor: '#e40046',
+                  upBorderColor: '#6Ec85c',
+                  downBorderColor: '#e40046',
+                  upWickColor: '#6Ec85c',
+                  downWickColor: '#e40046'
+                },
+                priceMark: {
+                  show: true,
+                  high: { color: '#6Ec85c' },
+                  low: { color: '#e40046' },
+                  last: {
+                    show: true,
+                    upColor: '#6Ec85c',
+                    downColor: '#e40046',
+                    line: { show: true }
+                  }
+                }
+              },
+              indicator: {
+                bars: [
+                  { upColor: 'rgba(110, 200, 92, 0.6)', downColor: 'rgba(228, 0, 70, 0.6)' }
+                ],
+                lines: [
+                  { color: '#D4A0FF' },
+                  { color: '#FF5300' },
+                  { color: '#6Ec85c' },
+                  { color: '#00D4FF' }
+                ]
+              },
+              xAxis: {
+                axisLine: { color: 'rgba(255, 255, 255, 0.1)' },
+                tickLine: { color: 'rgba(255, 255, 255, 0.1)' },
+                tickText: { color: 'rgba(255, 255, 255, 0.5)' }
+              },
+              yAxis: {
+                axisLine: { color: 'rgba(255, 255, 255, 0.1)' },
+                tickLine: { color: 'rgba(255, 255, 255, 0.1)' },
+                tickText: { color: 'rgba(255, 255, 255, 0.5)' }
+              },
+              crosshair: {
+                show: true,
+                horizontal: {
+                  line: { color: '#D4A0FF', style: 'dashed' },
+                  text: { color: '#000', backgroundColor: '#D4A0FF' }
+                },
+                vertical: {
+                  line: { color: '#D4A0FF', style: 'dashed' },
+                  text: { color: '#000', backgroundColor: '#D4A0FF' }
+                }
+              },
+              separator: {
+                color: 'rgba(255, 255, 255, 0.1)'
+              }
+            }
           })
 
-          // 再次确保时区设置生效
           chartInstance.current.setTimezone('Asia/Shanghai')
 
-          // 设置十字光标监听
           chartInstance.current.subscribeAction('onCrosshairChange', (data) => {
             if (!mounted) return
             if (data && data.dataIndex !== undefined && data.kLineData) {
@@ -44,30 +115,21 @@ const KlineChart = ({ symbol, initialTimeframe = '5m' }) => {
             }
           })
 
-          // 只在第一次创建时添加指标
           if (!indicatorsCreated.current) {
-            // VOL指标
             chartInstance.current.createIndicator('VOL')
-
-            // EMA指标 - 固定参数
             chartInstance.current.createIndicator('EMA', false, {
               id: 'candle_pane',
               calcParams: [7, 14, 30, 52]
             })
-
-            // MACD指标
             chartInstance.current.createIndicator('MACD')
-
             indicatorsCreated.current = true
           }
 
-          // 加载初始数据
           loadChartData()
         }
       } catch (error) {
         console.error('Failed to load klinecharts:', error)
         if (mounted) {
-          message.error('图表库加载失败')
           setLoading(false)
         }
       }
@@ -75,7 +137,6 @@ const KlineChart = ({ symbol, initialTimeframe = '5m' }) => {
 
     initChart()
 
-    // 清理函数
     return () => {
       mounted = false
       if (chartInstance.current) {
@@ -88,10 +149,9 @@ const KlineChart = ({ symbol, initialTimeframe = '5m' }) => {
         indicatorsCreated.current = false
       }
     }
-  }, []) // 空依赖数组，只在mount时执行
+  }, [])
 
   useEffect(() => {
-    // 当symbol或timeframe变化时，只更新数据，不重建图表
     if (chartInstance.current) {
       loadChartData()
     }
@@ -104,7 +164,6 @@ const KlineChart = ({ symbol, initialTimeframe = '5m' }) => {
 
       if (response.data && response.data.length > 0) {
         const chartData = response.data.map(item => {
-          // 后端返回的是 UTC 时间，需要加 'Z' 后缀确保正确解析
           let ts = item.timestamp
           if (!ts.endsWith('Z') && !ts.includes('+')) {
             ts = ts + 'Z'
@@ -120,13 +179,11 @@ const KlineChart = ({ symbol, initialTimeframe = '5m' }) => {
         })
 
         if (chartInstance.current) {
-          // 使用applyNewData更新数据，不重新创建指标
           chartInstance.current.applyNewData(chartData)
 
           const lastCandle = chartData[chartData.length - 1]
           setCurrentPrice(lastCandle.close)
 
-          // 自动缩放
           setTimeout(() => {
             if (chartInstance.current) {
               chartInstance.current.scrollToRealTime()
@@ -136,7 +193,6 @@ const KlineChart = ({ symbol, initialTimeframe = '5m' }) => {
           }, 100)
         }
 
-        // 获取异常点数量
         try {
           const indicatorsResponse = await getIndicators(symbol, timeframe)
           if (indicatorsResponse.anomaly_count !== undefined) {
@@ -145,24 +201,12 @@ const KlineChart = ({ symbol, initialTimeframe = '5m' }) => {
         } catch (err) {
           console.error('Failed to get indicators:', err)
         }
-      } else {
-        message.warning('暂无K线数据')
       }
     } catch (error) {
       console.error('Failed to load chart data:', error)
-
-      if (error.response && error.response.status === 404) {
-        message.warning(`${symbol} 可能已从币安下架，无法获取K线数据`)
-      } else {
-        message.error('加载图表数据失败: ' + error.message)
-      }
     } finally {
       setLoading(false)
     }
-  }
-
-  const handleTimeframeChange = (value) => {
-    setTimeframe(value)
   }
 
   const calculateChangePercent = (price1, price2) => {
@@ -185,64 +229,81 @@ const KlineChart = ({ symbol, initialTimeframe = '5m' }) => {
 
   const amplitude = currentCandle ? calculateAmplitude(currentCandle) : 0
 
+  const timeframeOptions = [
+    { value: '1m', label: '1M' },
+    { value: '5m', label: '5M' },
+    { value: '15m', label: '15M' },
+    { value: '30m', label: '30M' },
+    { value: '1h', label: '1H' },
+    { value: '4h', label: '4H' },
+    { value: '1d', label: '1D' },
+  ]
+
   return (
-    <div style={{ width: '100%', height: '100%' }}>
-      <Space style={{ marginBottom: 16, width: '100%', justifyContent: 'space-between', flexWrap: 'wrap' }}>
-        <Space wrap>
-          <span style={{ fontWeight: 'bold', fontSize: '16px' }}>{symbol}</span>
-          <Select
-            value={timeframe}
-            onChange={handleTimeframeChange}
-            style={{ width: 100 }}
-            size="small"
-          >
-            <Option value="1m">1分钟</Option>
-            <Option value="5m">5分钟</Option>
-            <Option value="15m">15分钟</Option>
-            <Option value="30m">30分钟</Option>
-            <Option value="1h">1小时</Option>
-            <Option value="4h">4小时</Option>
-            <Option value="1d">1天</Option>
+    <div className="w-full h-full">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+        <div className="flex items-center gap-3">
+          <span className="text-lg font-bold font-mono">{symbol}</span>
+          <Select value={timeframe} onValueChange={setTimeframe}>
+            <SelectTrigger className="w-24 h-8">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {timeframeOptions.map(opt => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
           </Select>
 
           {anomalyCount > 0 && (
-            <Tag color="red">检测到 {anomalyCount} 个价格异动点</Tag>
+            <Badge variant="destructive">
+              {anomalyCount} ANOMALIES
+            </Badge>
           )}
-        </Space>
+        </div>
 
-        <Space wrap>
+        <div className="flex flex-wrap items-center gap-2">
           {currentPrice > 0 && (
-            <Tag color="blue">当前价: ${currentPrice.toFixed(6)}</Tag>
+            <Badge variant="purple" className="font-mono">
+              ${currentPrice.toFixed(6)}
+            </Badge>
           )}
 
           {hoverPrice && (
-            <Tag color={hoverChangePercent >= 0 ? 'green' : 'red'}>
-              相对涨跌: {hoverChangePercent >= 0 ? '+' : ''}{hoverChangePercent}%
-            </Tag>
+            <Badge variant={hoverChangePercent >= 0 ? 'success' : 'destructive'} className="font-mono">
+              {hoverChangePercent >= 0 ? '+' : ''}{hoverChangePercent}%
+            </Badge>
           )}
 
           {currentCandle && (
             <>
-              <Tag color={candleChangePercent >= 0 ? 'green' : 'red'}>
-                K线涨跌: {candleChangePercent >= 0 ? '+' : ''}{candleChangePercent}%
-              </Tag>
-              <Tag color="purple">
-                振幅: {amplitude}%
-              </Tag>
+              <Badge variant={candleChangePercent >= 0 ? 'success' : 'destructive'} className="font-mono">
+                K: {candleChangePercent >= 0 ? '+' : ''}{candleChangePercent}%
+              </Badge>
+              <Badge variant="outline" className="font-mono">
+                AMP: {amplitude}%
+              </Badge>
             </>
           )}
-        </Space>
-      </Space>
+        </div>
+      </div>
 
-      <Spin spinning={loading}>
+      {/* Chart Container */}
+      <div className="relative border-2 border-border bg-background">
+        {loading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10">
+            <RefreshCw className="w-6 h-6 animate-spin text-primary" />
+          </div>
+        )}
         <div
           ref={chartRef}
-          style={{
-            width: '100%',
-            height: '600px'
-          }}
+          className="w-full"
+          style={{ height: '500px' }}
         />
-      </Spin>
+      </div>
     </div>
   )
 }

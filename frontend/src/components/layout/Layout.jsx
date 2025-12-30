@@ -25,7 +25,7 @@ export default function Layout({ children }) {
         <div className="container mx-auto px-6">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span className="font-mono">TRETRA TRADING STATION v2.0</span>
-            <span className="font-mono">Powered by Ledger Design System</span>
+            <span className="font-mono">Powered by TRETRA</span>
           </div>
         </div>
       </footer>

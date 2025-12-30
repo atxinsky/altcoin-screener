@@ -9,8 +9,12 @@ import {
   Play,
   Pause,
   ChevronDown,
+  ChevronRight,
   Settings,
-  Activity
+  Activity,
+  Zap,
+  Trophy,
+  X
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -25,6 +29,13 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog'
 import { cn, formatNumber, formatPercent, formatPrice } from '@/lib/utils'
 import axios from 'axios'
 
@@ -38,6 +49,26 @@ export default function TradingPage() {
   const [logs, setLogs] = useState([])
   const [loading, setLoading] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
+
+  // Form state for creating account
+  const [formData, setFormData] = useState({
+    account_name: '',
+    initial_balance: 10000,
+    max_positions: 5,
+    position_size_pct: 2.0,
+    entry_timeframe: '15m',
+    entry_score_min: 75.0,
+    entry_technical_min: 60.0,
+    stop_loss_pct: 3.0,
+    take_profit_1: 6.0,
+    take_profit_2: 10.0,
+    take_profit_3: 15.0,
+    require_macd_golden: true,
+    require_volume_surge: false,
+    trailing_stop_enabled: false,
+    trailing_stop_pct: 2.0,
+    max_holding_hours: 24
+  })
 
   useEffect(() => {
     loadAccounts()
@@ -70,13 +101,68 @@ export default function TradingPage() {
       const [posRes, tradeRes, logRes] = await Promise.all([
         axios.get(`${API_BASE}/accounts/${accountId}/positions`),
         axios.get(`${API_BASE}/accounts/${accountId}/trades`),
-        axios.get(`${API_BASE}/accounts/${accountId}/logs?limit=50`)
+        axios.get(`${API_BASE}/accounts/${accountId}/logs?limit=100`)
       ])
       setPositions(posRes.data.positions || [])
       setTrades(tradeRes.data.trades || [])
       setLogs(logRes.data.logs || [])
     } catch (error) {
       console.error('Failed to load account data:', error)
+    }
+  }
+
+  const handleCreateAccount = async () => {
+    try {
+      setLoading(true)
+      const payload = {
+        ...formData,
+        take_profit_levels: [
+          formData.take_profit_1,
+          formData.take_profit_2,
+          formData.take_profit_3
+        ],
+        strategy_config: {
+          require_macd_golden: formData.require_macd_golden,
+          require_volume_surge: formData.require_volume_surge,
+          trailing_stop_enabled: formData.trailing_stop_enabled,
+          trailing_stop_pct: formData.trailing_stop_pct,
+          max_holding_hours: formData.max_holding_hours
+        }
+      }
+      delete payload.take_profit_1
+      delete payload.take_profit_2
+      delete payload.take_profit_3
+      delete payload.require_macd_golden
+      delete payload.require_volume_surge
+      delete payload.trailing_stop_enabled
+      delete payload.trailing_stop_pct
+      delete payload.max_holding_hours
+
+      await axios.post(`${API_BASE}/accounts`, payload)
+      setShowCreateModal(false)
+      setFormData({
+        account_name: '',
+        initial_balance: 10000,
+        max_positions: 5,
+        position_size_pct: 2.0,
+        entry_timeframe: '15m',
+        entry_score_min: 75.0,
+        entry_technical_min: 60.0,
+        stop_loss_pct: 3.0,
+        take_profit_1: 6.0,
+        take_profit_2: 10.0,
+        take_profit_3: 15.0,
+        require_macd_golden: true,
+        require_volume_surge: false,
+        trailing_stop_enabled: false,
+        trailing_stop_pct: 2.0,
+        max_holding_hours: 24
+      })
+      await loadAccounts()
+    } catch (error) {
+      console.error('Failed to create account:', error)
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -105,6 +191,23 @@ export default function TradingPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleClosePosition = async (positionId) => {
+    try {
+      setLoading(true)
+      await axios.delete(`${API_BASE}/positions/${positionId}`)
+      loadAccountData(selectedAccount.id)
+      loadAccounts()
+    } catch (error) {
+      console.error('Failed to close position:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const updateForm = (key, value) => {
+    setFormData(prev => ({ ...prev, [key]: value }))
   }
 
   return (
@@ -177,22 +280,26 @@ export default function TradingPage() {
           <StatsCard
             title="TOTAL EQUITY"
             value={`$${formatNumber(selectedAccount.total_equity)}`}
+            icon={<Wallet className="w-5 h-5" />}
             color="purple"
           />
           <StatsCard
             title="TOTAL P&L"
             value={`$${formatNumber(selectedAccount.total_pnl)}`}
             change={selectedAccount.total_pnl}
+            icon={selectedAccount.total_pnl >= 0 ? <TrendingUp className="w-5 h-5" /> : <TrendingDown className="w-5 h-5" />}
             color={selectedAccount.total_pnl >= 0 ? 'green' : 'red'}
           />
           <StatsCard
             title="WIN RATE"
-            value={`${(selectedAccount.win_rate * 100).toFixed(1)}%`}
+            value={`${selectedAccount.total_trades > 0 ? ((selectedAccount.winning_trades / selectedAccount.total_trades) * 100).toFixed(1) : 0}%`}
+            icon={<Trophy className="w-5 h-5" />}
             color="default"
           />
           <StatsCard
             title="TRADES"
             value={selectedAccount.total_trades}
+            icon={<Activity className="w-5 h-5" />}
             color="default"
           />
         </div>
@@ -209,7 +316,7 @@ export default function TradingPage() {
             {loading ? (
               <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
             ) : (
-              <Play className="w-4 h-4 mr-2" />
+              <Zap className="w-4 h-4 mr-2" />
             )}
             TRIGGER SCAN
           </Button>
@@ -248,12 +355,13 @@ export default function TradingPage() {
                       <th>QTY</th>
                       <th>P&L</th>
                       <th>SL / TP</th>
+                      <th>ACTION</th>
                     </tr>
                   </thead>
                   <tbody>
                     {positions.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="text-center py-8 text-muted-foreground">
+                        <td colSpan={7} className="text-center py-8 text-muted-foreground">
                           No open positions
                         </td>
                       </tr>
@@ -265,12 +373,15 @@ export default function TradingPage() {
                           <td className="font-mono">${formatPrice(pos.current_price)}</td>
                           <td className="font-mono">{pos.quantity?.toFixed(4)}</td>
                           <td>
-                            <span className={cn(
+                            <div className={cn(
                               "font-mono font-bold",
                               pos.unrealized_pnl_pct >= 0 ? "text-profit" : "text-loss"
                             )}>
                               {formatPercent(pos.unrealized_pnl_pct)}
-                            </span>
+                              <div className="text-xs opacity-70">
+                                ${pos.unrealized_pnl?.toFixed(2) || '0.00'}
+                              </div>
+                            </div>
                           </td>
                           <td className="font-mono text-xs">
                             <span className="text-loss">${formatPrice(pos.stop_loss_price)}</span>
@@ -278,6 +389,16 @@ export default function TradingPage() {
                             <span className="text-profit">
                               ${formatPrice(pos.take_profit_prices?.[0])}
                             </span>
+                          </td>
+                          <td>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => handleClosePosition(pos.id)}
+                              disabled={loading}
+                            >
+                              CLOSE
+                            </Button>
                           </td>
                         </tr>
                       ))
@@ -326,16 +447,25 @@ export default function TradingPage() {
                           <td className="font-mono">{trade.quantity?.toFixed(4)}</td>
                           <td>
                             {trade.pnl !== null ? (
-                              <span className={cn(
+                              <div className={cn(
                                 "font-mono",
                                 trade.pnl >= 0 ? "text-profit" : "text-loss"
                               )}>
                                 {formatPercent(trade.pnl_pct)}
-                              </span>
+                                <div className="text-xs opacity-70">
+                                  ${trade.pnl?.toFixed(2)}
+                                </div>
+                              </div>
                             ) : '-'}
                           </td>
-                          <td className="text-xs text-muted-foreground">
-                            {trade.trade_type}
+                          <td>
+                            <Badge variant={
+                              trade.trade_type === 'ENTRY' ? 'success' :
+                              trade.trade_type === 'PARTIAL_EXIT' ? 'warning' :
+                              'destructive'
+                            }>
+                              {trade.trade_type}
+                            </Badge>
                           </td>
                         </tr>
                       ))
@@ -357,40 +487,19 @@ export default function TradingPage() {
                       <th>SYMBOL</th>
                       <th>SCORE</th>
                       <th>REASON</th>
+                      <th>STATUS</th>
                     </tr>
                   </thead>
                   <tbody>
                     {logs.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="text-center py-8 text-muted-foreground">
+                        <td colSpan={6} className="text-center py-8 text-muted-foreground">
                           No logs yet
                         </td>
                       </tr>
                     ) : (
                       logs.map((log) => (
-                        <tr key={log.id}>
-                          <td className="font-mono text-xs">
-                            {new Date(log.timestamp).toLocaleString()}
-                          </td>
-                          <td>
-                            <Badge
-                              variant={
-                                log.action === 'OPEN_POSITION' ? 'success' :
-                                log.action === 'SKIP' ? 'secondary' :
-                                'destructive'
-                              }
-                            >
-                              {log.action}
-                            </Badge>
-                          </td>
-                          <td className="font-bold">{log.symbol || '-'}</td>
-                          <td className="font-mono">
-                            {log.screening_score?.toFixed(1) || '-'}
-                          </td>
-                          <td className="text-xs text-muted-foreground max-w-xs truncate">
-                            {log.reason}
-                          </td>
-                        </tr>
+                        <LogRow key={log.id} log={log} />
                       ))
                     )}
                   </tbody>
@@ -400,11 +509,226 @@ export default function TradingPage() {
           </TabsContent>
         </Tabs>
       )}
+
+      {/* Create Account Modal */}
+      <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="font-mono">CREATE NEW ACCOUNT</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-6 py-4">
+            {/* Basic Settings */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-mono text-muted-foreground mb-2 block">
+                  ACCOUNT NAME
+                </label>
+                <Input
+                  value={formData.account_name}
+                  onChange={(e) => updateForm('account_name', e.target.value)}
+                  placeholder="Strategy A"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-mono text-muted-foreground mb-2 block">
+                  INITIAL BALANCE (USDT)
+                </label>
+                <Input
+                  type="number"
+                  value={formData.initial_balance}
+                  onChange={(e) => updateForm('initial_balance', Number(e.target.value))}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-mono text-muted-foreground mb-2 block">
+                  MAX POSITIONS
+                </label>
+                <Input
+                  type="number"
+                  value={formData.max_positions}
+                  onChange={(e) => updateForm('max_positions', Number(e.target.value))}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-mono text-muted-foreground mb-2 block">
+                  POSITION SIZE (%)
+                </label>
+                <Input
+                  type="number"
+                  step={0.5}
+                  value={formData.position_size_pct}
+                  onChange={(e) => updateForm('position_size_pct', Number(e.target.value))}
+                />
+              </div>
+            </div>
+
+            {/* Entry Conditions */}
+            <div className="border-t border-border pt-4">
+              <h4 className="text-sm font-mono text-muted-foreground mb-4">ENTRY CONDITIONS</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div>
+                  <label className="text-xs font-mono text-muted-foreground mb-2 block">
+                    TIMEFRAME
+                  </label>
+                  <Select value={formData.entry_timeframe} onValueChange={(v) => updateForm('entry_timeframe', v)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="5m">5M</SelectItem>
+                      <SelectItem value="15m">15M</SelectItem>
+                      <SelectItem value="1h">1H</SelectItem>
+                      <SelectItem value="4h">4H</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-xs font-mono text-muted-foreground mb-2 block">
+                    MIN SCORE
+                  </label>
+                  <Input
+                    type="number"
+                    value={formData.entry_score_min}
+                    onChange={(e) => updateForm('entry_score_min', Number(e.target.value))}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-mono text-muted-foreground mb-2 block">
+                    MIN TECH SCORE
+                  </label>
+                  <Input
+                    type="number"
+                    value={formData.entry_technical_min}
+                    onChange={(e) => updateForm('entry_technical_min', Number(e.target.value))}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-mono text-muted-foreground mb-2 block">
+                    MAX HOLD (H)
+                  </label>
+                  <Input
+                    type="number"
+                    value={formData.max_holding_hours}
+                    onChange={(e) => updateForm('max_holding_hours', Number(e.target.value))}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 mt-4">
+                <div className="flex items-center justify-between p-3 border border-border">
+                  <span className="text-sm">REQUIRE MACD GOLDEN</span>
+                  <Switch
+                    checked={formData.require_macd_golden}
+                    onCheckedChange={(v) => updateForm('require_macd_golden', v)}
+                  />
+                </div>
+                <div className="flex items-center justify-between p-3 border border-border">
+                  <span className="text-sm">REQUIRE VOLUME SURGE</span>
+                  <Switch
+                    checked={formData.require_volume_surge}
+                    onCheckedChange={(v) => updateForm('require_volume_surge', v)}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Stop Loss */}
+            <div className="border-t border-border pt-4">
+              <h4 className="text-sm font-mono text-muted-foreground mb-4">STOP LOSS</h4>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="text-xs font-mono text-muted-foreground mb-2 block">
+                    STOP LOSS (%)
+                  </label>
+                  <Input
+                    type="number"
+                    step={0.5}
+                    value={formData.stop_loss_pct}
+                    onChange={(e) => updateForm('stop_loss_pct', Number(e.target.value))}
+                  />
+                </div>
+                <div className="flex items-center justify-between p-3 border border-border">
+                  <span className="text-sm">TRAILING STOP</span>
+                  <Switch
+                    checked={formData.trailing_stop_enabled}
+                    onCheckedChange={(v) => updateForm('trailing_stop_enabled', v)}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-mono text-muted-foreground mb-2 block">
+                    TRAIL (%)
+                  </label>
+                  <Input
+                    type="number"
+                    step={0.5}
+                    value={formData.trailing_stop_pct}
+                    onChange={(e) => updateForm('trailing_stop_pct', Number(e.target.value))}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Take Profit */}
+            <div className="border-t border-border pt-4">
+              <h4 className="text-sm font-mono text-muted-foreground mb-4">TAKE PROFIT (SCALED)</h4>
+              <div className="grid grid-cols-3 gap-4">
+                <div>
+                  <label className="text-xs font-mono text-muted-foreground mb-2 block">
+                    TP1 (%) - 33%
+                  </label>
+                  <Input
+                    type="number"
+                    step={0.5}
+                    value={formData.take_profit_1}
+                    onChange={(e) => updateForm('take_profit_1', Number(e.target.value))}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-mono text-muted-foreground mb-2 block">
+                    TP2 (%) - 33%
+                  </label>
+                  <Input
+                    type="number"
+                    step={0.5}
+                    value={formData.take_profit_2}
+                    onChange={(e) => updateForm('take_profit_2', Number(e.target.value))}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-mono text-muted-foreground mb-2 block">
+                    TP3 (%) - 34%
+                  </label>
+                  <Input
+                    type="number"
+                    step={0.5}
+                    value={formData.take_profit_3}
+                    onChange={(e) => updateForm('take_profit_3', Number(e.target.value))}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreateModal(false)}>
+              CANCEL
+            </Button>
+            <Button onClick={handleCreateAccount} disabled={loading || !formData.account_name}>
+              {loading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
+              CREATE ACCOUNT
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
 
-function StatsCard({ title, value, change, color = 'default' }) {
+function StatsCard({ title, value, change, icon, color = 'default' }) {
   const colorMap = {
     purple: 'border-[#D4A0FF]',
     green: 'border-[#6Ec85c]',
@@ -415,8 +739,11 @@ function StatsCard({ title, value, change, color = 'default' }) {
   return (
     <Card className={cn("", colorMap[color])}>
       <CardContent className="pt-6">
-        <div className="text-xs font-mono text-muted-foreground mb-2">
-          {title}
+        <div className="flex items-start justify-between mb-2">
+          <div className="text-xs font-mono text-muted-foreground">
+            {title}
+          </div>
+          <div className="text-muted-foreground">{icon}</div>
         </div>
         <div className={cn(
           "text-2xl font-bold font-mono",
@@ -426,5 +753,113 @@ function StatsCard({ title, value, change, color = 'default' }) {
         </div>
       </CardContent>
     </Card>
+  )
+}
+
+function LogRow({ log }) {
+  const [expanded, setExpanded] = useState(false)
+
+  const getActionBadge = (action) => {
+    const actionMap = {
+      'OPEN_POSITION': { variant: 'success', text: 'OPEN' },
+      'CLOSE_POSITION': { variant: 'destructive', text: 'CLOSE' },
+      'PARTIAL_EXIT': { variant: 'warning', text: 'PARTIAL' },
+      'STOP_LOSS': { variant: 'destructive', text: 'SL' },
+      'TAKE_PROFIT': { variant: 'success', text: 'TP' },
+      'SKIP': { variant: 'secondary', text: 'SKIP' },
+      'ERROR': { variant: 'destructive', text: 'ERROR' }
+    }
+    const config = actionMap[action] || { variant: 'secondary', text: action }
+    return <Badge variant={config.variant}>{config.text}</Badge>
+  }
+
+  return (
+    <>
+      <tr
+        className="cursor-pointer hover:bg-muted/30"
+        onClick={() => log.screening_data && setExpanded(!expanded)}
+      >
+        <td className="font-mono text-xs">
+          {new Date(log.timestamp).toLocaleString()}
+        </td>
+        <td>{getActionBadge(log.action)}</td>
+        <td className="font-bold">{log.symbol || '-'}</td>
+        <td className="font-mono">
+          {log.screening_score ? (
+            <span className={cn(
+              log.screening_score >= 80 ? 'text-profit font-bold' :
+              log.screening_score >= 75 ? 'text-primary font-bold' :
+              'text-muted-foreground'
+            )}>
+              {log.screening_score.toFixed(1)}
+            </span>
+          ) : '-'}
+        </td>
+        <td className="text-xs text-muted-foreground max-w-xs truncate">
+          {log.reason}
+        </td>
+        <td>
+          <Badge variant={log.success ? 'success' : 'destructive'}>
+            {log.success ? 'OK' : 'FAIL'}
+          </Badge>
+        </td>
+      </tr>
+      {expanded && log.screening_data && (
+        <tr>
+          <td colSpan={6} className="bg-muted/30 p-4">
+            <div className="grid grid-cols-3 md:grid-cols-6 gap-4 text-sm">
+              <div>
+                <span className="text-muted-foreground">Timeframe</span>
+                <div className="font-mono">{log.screening_data.timeframe || '-'}</div>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Total Score</span>
+                <div className="font-mono font-bold">{log.screening_data.total_score?.toFixed(1)}</div>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Beta</span>
+                <div className="font-mono">{log.screening_data.beta_score?.toFixed(1)}</div>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Volume</span>
+                <div className="font-mono">{log.screening_data.volume_score?.toFixed(1)}</div>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Technical</span>
+                <div className="font-mono">{log.screening_data.technical_score?.toFixed(1)}</div>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Price</span>
+                <div className="font-mono">${log.screening_data.price?.toFixed(6)}</div>
+              </div>
+              <div>
+                <span className="text-muted-foreground">MACD Golden</span>
+                <Badge variant={log.screening_data.macd_golden_cross ? 'success' : 'secondary'}>
+                  {log.screening_data.macd_golden_cross ? 'YES' : 'NO'}
+                </Badge>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Volume Surge</span>
+                <Badge variant={log.screening_data.volume_surge ? 'warning' : 'secondary'}>
+                  {log.screening_data.volume_surge ? 'YES' : 'NO'}
+                </Badge>
+              </div>
+              <div>
+                <span className="text-muted-foreground">RSI</span>
+                <div className="font-mono">{log.screening_data.rsi?.toFixed(1) || '-'}</div>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Position Size</span>
+                <div className="font-mono">${log.screening_data.position_size_usdt?.toFixed(2) || '-'}</div>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Quantity</span>
+                <div className="font-mono">{log.screening_data.quantity?.toFixed(4) || '-'}</div>
+              </div>
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
   )
 }
