@@ -152,4 +152,95 @@ export const removeFromWatchlist = async (symbol) => {
   return response.data
 }
 
+// Top Gainers endpoint
+export const getTopGainers = async (limit = 20, minVolume = 1000000) => {
+  const response = await api.get('/top-gainers', {
+    params: { limit, min_volume: minVolume }
+  })
+  return response.data
+}
+
+// Notification Settings endpoints
+export const getNotificationSettings = async () => {
+  const response = await api.get('/notification-settings')
+  return response.data
+}
+
+export const updateNotificationSettings = async (settings) => {
+  const response = await api.post('/notification-settings', settings)
+  return response.data
+}
+
+export const testNotification = async () => {
+  const response = await api.post('/notification-settings/test')
+  return response.data
+}
+
+export const resetDailyNotificationCount = async () => {
+  const response = await api.post('/notification-settings/reset-daily-count')
+  return response.data
+}
+
+// Sim-Trading Account endpoints
+export const getSimTradingAccounts = async () => {
+  const response = await api.get('/sim-trading/accounts')
+  return response.data
+}
+
+export const createSimTradingAccount = async (accountData) => {
+  const response = await api.post('/sim-trading/accounts', accountData)
+  return response.data
+}
+
+export const getSimTradingAccount = async (accountId) => {
+  const response = await api.get(`/sim-trading/accounts/${accountId}`)
+  return response.data
+}
+
+export const deleteSimTradingAccount = async (accountId) => {
+  const response = await api.delete(`/sim-trading/accounts/${accountId}`)
+  return response.data
+}
+
+export const toggleAutoTrading = async (accountId, enabled) => {
+  const response = await api.post(`/sim-trading/accounts/${accountId}/auto-trade`, {
+    enabled
+  })
+  return response.data
+}
+
+export const checkAccountExits = async (accountId) => {
+  const response = await api.post(`/sim-trading/accounts/${accountId}/check-exits`)
+  return response.data
+}
+
+// Sim-Trading Position endpoints
+export const getAccountPositions = async (accountId) => {
+  const response = await api.get(`/sim-trading/accounts/${accountId}/positions`)
+  return response.data
+}
+
+export const closePosition = async (positionId, exitPrice = null) => {
+  const response = await api.delete(`/sim-trading/positions/${positionId}`, {
+    params: exitPrice ? { exit_price: exitPrice } : {}
+  })
+  return response.data
+}
+
+// Sim-Trading Trade History endpoints
+export const getAccountTrades = async (accountId, limit = 50) => {
+  const response = await api.get(`/sim-trading/accounts/${accountId}/trades`, {
+    params: { limit }
+  })
+  return response.data
+}
+
+// Sim-Trading Logs endpoints
+export const getAccountLogs = async (accountId, limit = 100) => {
+  const response = await api.get(`/sim-trading/accounts/${accountId}/logs`, {
+    params: { limit }
+  })
+  return response.data
+}
+
 export default api

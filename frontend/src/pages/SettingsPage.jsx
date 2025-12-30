@@ -16,14 +16,17 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
 import { cn } from '@/lib/utils'
-import axios from 'axios'
-
-const API_BASE = '/api'
+import {
+  getNotificationSettings,
+  updateNotificationSettings,
+  testNotification
+} from '@/services/api'
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState(null)
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [testing, setTesting] = useState(false)
 
   useEffect(() => {
     loadSettings()
@@ -32,12 +35,27 @@ export default function SettingsPage() {
   const loadSettings = async () => {
     setLoading(true)
     try {
-      const response = await axios.get(`${API_BASE}/notification-settings`)
-      if (response.data.success) {
-        setSettings(response.data.settings)
+      const response = await getNotificationSettings()
+      if (response.success) {
+        setSettings(response.settings)
       }
     } catch (error) {
       console.error('Failed to load settings:', error)
+      // Set default settings so page doesn't spin forever
+      setSettings({
+        email_enabled: false,
+        telegram_enabled: false,
+        min_interval_minutes: 30,
+        daily_limit: 10,
+        min_score_threshold: 70,
+        notify_top_n: 5,
+        quiet_hours_enabled: false,
+        quiet_hours_start: 22,
+        quiet_hours_end: 7,
+        notify_high_score: true,
+        notify_new_signals: true,
+        notify_position_updates: true
+      })
     } finally {
       setLoading(false)
     }
@@ -46,11 +64,22 @@ export default function SettingsPage() {
   const saveSettings = async () => {
     setSaving(true)
     try {
-      await axios.post(`${API_BASE}/notification-settings`, settings)
+      await updateNotificationSettings(settings)
     } catch (error) {
       console.error('Failed to save settings:', error)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const handleTestNotification = async () => {
+    setTesting(true)
+    try {
+      await testNotification()
+    } catch (error) {
+      console.error('Failed to send test notification:', error)
+    } finally {
+      setTesting(false)
     }
   }
 

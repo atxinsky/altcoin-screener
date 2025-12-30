@@ -37,9 +37,15 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { cn, formatNumber, formatPercent, formatPrice } from '@/lib/utils'
-import axios from 'axios'
-
-const API_BASE = '/api/sim-trading'
+import {
+  getSimTradingAccounts,
+  createSimTradingAccount,
+  toggleAutoTrading,
+  getAccountPositions,
+  getAccountTrades,
+  getAccountLogs,
+  closePosition
+} from '@/services/api'
 
 export default function TradingPage() {
   const [accounts, setAccounts] = useState([])
@@ -47,7 +53,7 @@ export default function TradingPage() {
   const [positions, setPositions] = useState([])
   const [trades, setTrades] = useState([])
   const [logs, setLogs] = useState([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [showCreateModal, setShowCreateModal] = useState(false)
 
   // Form state for creating account
@@ -83,8 +89,8 @@ export default function TradingPage() {
   const loadAccounts = async () => {
     try {
       setLoading(true)
-      const response = await axios.get(`${API_BASE}/accounts`)
-      const accountsList = response.data.accounts || []
+      const response = await getSimTradingAccounts()
+      const accountsList = response.accounts || []
       setAccounts(accountsList)
       if (accountsList.length > 0 && !selectedAccount) {
         setSelectedAccount(accountsList[0])
@@ -99,13 +105,13 @@ export default function TradingPage() {
   const loadAccountData = async (accountId) => {
     try {
       const [posRes, tradeRes, logRes] = await Promise.all([
-        axios.get(`${API_BASE}/accounts/${accountId}/positions`),
-        axios.get(`${API_BASE}/accounts/${accountId}/trades`),
-        axios.get(`${API_BASE}/accounts/${accountId}/logs?limit=100`)
+        getAccountPositions(accountId),
+        getAccountTrades(accountId),
+        getAccountLogs(accountId, 100)
       ])
-      setPositions(posRes.data.positions || [])
-      setTrades(tradeRes.data.trades || [])
-      setLogs(logRes.data.logs || [])
+      setPositions(posRes.positions || [])
+      setTrades(tradeRes.trades || [])
+      setLogs(logRes.logs || [])
     } catch (error) {
       console.error('Failed to load account data:', error)
     }
@@ -138,7 +144,7 @@ export default function TradingPage() {
       delete payload.trailing_stop_pct
       delete payload.max_holding_hours
 
-      await axios.post(`${API_BASE}/accounts`, payload)
+      await createSimTradingAccount(payload)
       setShowCreateModal(false)
       setFormData({
         account_name: '',
@@ -170,9 +176,7 @@ export default function TradingPage() {
     if (!selectedAccount) return
     try {
       const newStatus = !selectedAccount.auto_trading_enabled
-      await axios.patch(`${API_BASE}/accounts/${selectedAccount.id}`, {
-        auto_trading_enabled: newStatus
-      })
+      await toggleAutoTrading(selectedAccount.id, newStatus)
       loadAccounts()
     } catch (error) {
       console.error('Failed to toggle auto trading:', error)
@@ -183,7 +187,7 @@ export default function TradingPage() {
     if (!selectedAccount) return
     try {
       setLoading(true)
-      await axios.post(`${API_BASE}/accounts/${selectedAccount.id}/auto-trade`)
+      await toggleAutoTrading(selectedAccount.id, true)
       loadAccountData(selectedAccount.id)
       loadAccounts()
     } catch (error) {
@@ -196,7 +200,7 @@ export default function TradingPage() {
   const handleClosePosition = async (positionId) => {
     try {
       setLoading(true)
-      await axios.delete(`${API_BASE}/positions/${positionId}`)
+      await closePosition(positionId)
       loadAccountData(selectedAccount.id)
       loadAccounts()
     } catch (error) {
@@ -237,6 +241,31 @@ export default function TradingPage() {
           </Button>
         </div>
       </motion.div>
+
+      {/* Loading State */}
+      {loading && accounts.length === 0 && (
+        <div className="flex items-center justify-center py-12">
+          <RefreshCw className="w-6 h-6 animate-spin text-primary mr-2" />
+          <span className="text-muted-foreground">Loading accounts...</span>
+        </div>
+      )}
+
+      {/* Empty State */}
+      {!loading && accounts.length === 0 && (
+        <Card className="text-center py-12">
+          <CardContent>
+            <Wallet className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+            <h3 className="text-xl font-bold mb-2">NO ACCOUNTS</h3>
+            <p className="text-muted-foreground mb-4">
+              Create your first simulation trading account to get started.
+            </p>
+            <Button onClick={() => setShowCreateModal(true)}>
+              <Plus className="w-4 h-4 mr-2" />
+              CREATE ACCOUNT
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Account Selector & Stats */}
       {selectedAccount && (
@@ -292,7 +321,7 @@ export default function TradingPage() {
           />
           <StatsCard
             title="WIN RATE"
-            value={`${selectedAccount.total_trades > 0 ? ((selectedAccount.winning_trades / selectedAccount.total_trades) * 100).toFixed(1) : 0}%`}
+            value={`${(selectedAccount.win_rate * 100).toFixed(1)}%`}
             icon={<Trophy className="w-5 h-5" />}
             color="default"
           />
