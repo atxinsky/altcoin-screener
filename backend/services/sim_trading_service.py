@@ -470,15 +470,32 @@ class SimTradingService:
         if not account or not account.auto_trading_enabled:
             return {'error': 'Account not found or auto-trading disabled'}
 
-        # Get latest screening results (within last 10 minutes)
-        time_threshold = datetime.utcnow() - timedelta(minutes=10)
+        # Get entry timeframe from account (default to 15m)
+        entry_timeframe = getattr(account, 'entry_timeframe', None) or '15m'
+
+        # Calculate time threshold based on timeframe
+        # For each timeframe, we look back 2x the interval to catch recent signals
+        timeframe_minutes = {
+            '5m': 10,
+            '15m': 30,
+            '1h': 120,
+            '4h': 480
+        }
+        lookback_minutes = timeframe_minutes.get(entry_timeframe, 30)
+        time_threshold = datetime.utcnow() - timedelta(minutes=lookback_minutes)
+
+        # Get latest screening results for the specific timeframe
         screening_results = self.db.query(ScreeningResult).filter(
-            ScreeningResult.timestamp >= time_threshold
+            and_(
+                ScreeningResult.timestamp >= time_threshold,
+                ScreeningResult.timeframe == entry_timeframe
+            )
         ).order_by(
             ScreeningResult.total_score.desc()
         ).limit(20).all()
 
         actions = {
+            'timeframe': entry_timeframe,
             'positions_opened': [],
             'positions_skipped': [],
             'positions_closed': []
@@ -509,15 +526,16 @@ class SimTradingService:
             # Convert to dict with comprehensive data for logging
             result_dict = {
                 'symbol': result.symbol,
+                'timeframe': entry_timeframe,
                 'total_score': result.total_score,
                 'technical_score': result.technical_score,
                 'beta_score': result.beta_score,
                 'volume_score': result.volume_score,
                 'price': result.current_price,
                 'volume_24h': getattr(result, 'volume_24h', None),
-                'change_5m': getattr(result, 'change_5m', None),
-                'change_15m': getattr(result, 'change_15m', None),
-                'change_1h': getattr(result, 'change_1h', None),
+                'change_5m': getattr(result, 'price_change_5m', None),
+                'change_15m': getattr(result, 'price_change_15m', None),
+                'change_1h': getattr(result, 'price_change_1h', None),
                 'macd_golden_cross': result.macd_golden_cross,
                 'above_all_ema': result.above_all_ema,
                 'above_sma': result.above_sma,

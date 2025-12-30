@@ -18,7 +18,8 @@ import {
   Divider,
   Tooltip,
   Descriptions,
-  Collapse
+  Collapse,
+  Select
 } from 'antd';
 import {
   DollarOutlined,
@@ -342,20 +343,24 @@ const SimTradingPanel = () => {
     const data = record.screening_data;
     return (
       <Descriptions size="small" column={4} bordered>
+        <Descriptions.Item label="时间级别">
+          <Tag color="purple">{data.timeframe || '-'}</Tag>
+        </Descriptions.Item>
         <Descriptions.Item label="总分">{data.total_score?.toFixed(1)}</Descriptions.Item>
         <Descriptions.Item label="Beta分">{data.beta_score?.toFixed(1)}</Descriptions.Item>
         <Descriptions.Item label="成交量分">{data.volume_score?.toFixed(1)}</Descriptions.Item>
         <Descriptions.Item label="技术分">{data.technical_score?.toFixed(1)}</Descriptions.Item>
         <Descriptions.Item label="当前价格">${data.price?.toFixed(6)}</Descriptions.Item>
-        <Descriptions.Item label="24h成交量">${(data.volume_24h/1000000)?.toFixed(2)}M</Descriptions.Item>
-        <Descriptions.Item label="5m涨跌">{data.change_5m?.toFixed(2)}%</Descriptions.Item>
-        <Descriptions.Item label="15m涨跌">{data.change_15m?.toFixed(2)}%</Descriptions.Item>
-        <Descriptions.Item label="MACD金叉" span={1}>
+        <Descriptions.Item label="24h成交量">${data.volume_24h ? (data.volume_24h/1000000)?.toFixed(2) + 'M' : '-'}</Descriptions.Item>
+        <Descriptions.Item label="5m涨跌">{data.change_5m?.toFixed(2) || '-'}%</Descriptions.Item>
+        <Descriptions.Item label="15m涨跌">{data.change_15m?.toFixed(2) || '-'}%</Descriptions.Item>
+        <Descriptions.Item label="1h涨跌">{data.change_1h?.toFixed(2) || '-'}%</Descriptions.Item>
+        <Descriptions.Item label="MACD金叉">
           <Tag color={data.macd_golden_cross ? 'green' : 'default'}>
             {data.macd_golden_cross ? '是' : '否'}
           </Tag>
         </Descriptions.Item>
-        <Descriptions.Item label="RSI">{data.rsi?.toFixed(1)}</Descriptions.Item>
+        <Descriptions.Item label="RSI">{data.rsi?.toFixed(1) || '-'}</Descriptions.Item>
         <Descriptions.Item label="成交量激增">
           <Tag color={data.volume_surge ? 'orange' : 'default'}>
             {data.volume_surge ? '是' : '否'}
@@ -366,6 +371,8 @@ const SimTradingPanel = () => {
             {data.price_anomaly ? '是' : '否'}
           </Tag>
         </Descriptions.Item>
+        <Descriptions.Item label="仓位金额">${data.position_size_usdt?.toFixed(2) || '-'}</Descriptions.Item>
+        <Descriptions.Item label="买入数量">{data.quantity?.toFixed(4) || '-'}</Descriptions.Item>
         {data.signals && (
           <Descriptions.Item label="技术信号" span={4}>
             {Object.entries(data.signals || {}).map(([key, val]) => (
@@ -615,6 +622,7 @@ const SimTradingPanel = () => {
             initial_balance: 10000,
             max_positions: 5,
             position_size_pct: 2.0,
+            entry_timeframe: '15m',
             entry_score_min: 75.0,
             entry_technical_min: 60.0,
             stop_loss_pct: 3.0,
@@ -665,17 +673,29 @@ const SimTradingPanel = () => {
           <Divider orientation="left">入场条件</Divider>
 
           <Row gutter={16}>
-            <Col span={8}>
+            <Col span={6}>
+              <Form.Item name="entry_timeframe" label={
+                <span>入场时间级别 <Tooltip title="使用该时间周期的筛选评分，扫描频率也跟随此设置"><InfoCircleOutlined /></Tooltip></span>
+              }>
+                <Select>
+                  <Select.Option value="5m">5分钟</Select.Option>
+                  <Select.Option value="15m">15分钟</Select.Option>
+                  <Select.Option value="1h">1小时</Select.Option>
+                  <Select.Option value="4h">4小时</Select.Option>
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={6}>
               <Form.Item name="entry_score_min" label="最低总分">
                 <InputNumber min={0} max={100} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col span={6}>
               <Form.Item name="entry_technical_min" label="最低技术分">
                 <InputNumber min={0} max={100} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
-            <Col span={8}>
+            <Col span={6}>
               <Form.Item name="max_holding_hours" label={
                 <span>最大持仓时间 <Tooltip title="超过此时间自动平仓"><InfoCircleOutlined /></Tooltip></span>
               }>

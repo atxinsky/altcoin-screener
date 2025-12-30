@@ -283,6 +283,7 @@ class SimAccount(Base):
     auto_trading_enabled = Column(Boolean, default=False)
     max_positions = Column(Integer, default=5)
     position_size_pct = Column(Float, default=2.0)  # % of total equity per position
+    entry_timeframe = Column(String, default='15m')  # Timeframe for entry signals: 5m, 15m, 1h, 4h
 
     # Strategy config - basic
     entry_score_min = Column(Float, default=75.0)
