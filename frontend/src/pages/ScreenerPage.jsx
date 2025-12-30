@@ -9,6 +9,8 @@ import {
   Star,
   StarOff,
   ChevronRight,
+  ChevronUp,
+  ChevronDown,
   Zap,
   BarChart3,
   ShoppingCart,
@@ -71,9 +73,43 @@ export default function ScreenerPage() {
   // Watchlist
   const [watchlist, setWatchlist] = useState(new Set())
 
+  // Sorting
+  const [sortColumn, setSortColumn] = useState(null)
+  const [sortDirection, setSortDirection] = useState('desc') // 'asc' or 'desc'
+
   useEffect(() => {
     loadInitialData()
   }, [])
+
+  // Handle sorting
+  const handleSort = (column) => {
+    if (sortColumn === column) {
+      // Toggle direction if same column
+      setSortDirection(prev => prev === 'desc' ? 'asc' : 'desc')
+    } else {
+      // New column, default to descending
+      setSortColumn(column)
+      setSortDirection('desc')
+    }
+  }
+
+  // Get sorted results
+  const getSortedResults = () => {
+    if (!sortColumn) return results
+
+    return [...results].sort((a, b) => {
+      let aVal = a[sortColumn] || 0
+      let bVal = b[sortColumn] || 0
+
+      if (sortDirection === 'desc') {
+        return bVal - aVal
+      } else {
+        return aVal - bVal
+      }
+    })
+  }
+
+  const sortedResults = getSortedResults()
 
   const loadInitialData = async () => {
     setLoading(true)
@@ -352,26 +388,75 @@ export default function ScreenerPage() {
                 <tr>
                   <th>#</th>
                   <th>SYMBOL</th>
-                  <th>SCORE</th>
-                  <th>PRICE</th>
-                  <th>5M</th>
-                  <th>15M</th>
-                  <th>1H</th>
-                  <th>BTC RATIO</th>
-                  <th>VOLUME 24H</th>
+                  <SortableHeader
+                    label="SCORE"
+                    column="total_score"
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={handleSort}
+                  />
+                  <SortableHeader
+                    label="PRICE"
+                    column="current_price"
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={handleSort}
+                  />
+                  <SortableHeader
+                    label="5M"
+                    column="price_change_5m"
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={handleSort}
+                  />
+                  <SortableHeader
+                    label="15M"
+                    column="price_change_15m"
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={handleSort}
+                  />
+                  <SortableHeader
+                    label="1H"
+                    column="price_change_1h"
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={handleSort}
+                  />
+                  <SortableHeader
+                    label="BTC RATIO"
+                    column="btc_ratio_change_pct"
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={handleSort}
+                  />
+                  <SortableHeader
+                    label="ETH RATIO"
+                    column="eth_ratio_change_pct"
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={handleSort}
+                  />
+                  <SortableHeader
+                    label="VOLUME 24H"
+                    column="volume_24h"
+                    sortColumn={sortColumn}
+                    sortDirection={sortDirection}
+                    onSort={handleSort}
+                  />
                   <th>SIGNALS</th>
                   <th>ACTIONS</th>
                 </tr>
               </thead>
               <tbody>
-                {results.length === 0 ? (
+                {sortedResults.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="text-center py-12 text-muted-foreground">
+                    <td colSpan={12} className="text-center py-12 text-muted-foreground">
                       {loading ? 'Loading...' : 'No results. Click "START SCAN" to begin.'}
                     </td>
                   </tr>
                 ) : (
-                  results.map((item, idx) => (
+                  sortedResults.map((item, idx) => (
                     <ResultRow
                       key={item.symbol || idx}
                       item={item}
@@ -458,6 +543,35 @@ export default function ScreenerPage() {
   )
 }
 
+// Sortable Header Component
+function SortableHeader({ label, column, sortColumn, sortDirection, onSort }) {
+  const isActive = sortColumn === column
+
+  return (
+    <th
+      className="cursor-pointer select-none hover:bg-muted/50 transition-colors"
+      onClick={() => onSort(column)}
+    >
+      <div className="flex items-center gap-1">
+        <span>{label}</span>
+        <div className="flex flex-col">
+          {isActive ? (
+            sortDirection === 'desc' ? (
+              <ChevronDown className="w-3 h-3 text-primary" />
+            ) : (
+              <ChevronUp className="w-3 h-3 text-primary" />
+            )
+          ) : (
+            <div className="w-3 h-3 opacity-30">
+              <ChevronUp className="w-3 h-3 -mb-1" />
+            </div>
+          )}
+        </div>
+      </div>
+    </th>
+  )
+}
+
 // Stats Card Component
 function StatsCard({ title, value, change, subtext, icon, color = 'default' }) {
   const colorMap = {
@@ -534,6 +648,11 @@ function ResultRow({ item, rank, onViewChart, onToggleWatchlist, onOpenTrade, is
             {formatPercent(item.btc_ratio_change_pct || 0)}
           </span>
         </td>
+        <td>
+          <span className={cn("font-mono text-xs", (item.eth_ratio_change_pct || 0) >= 0 ? "text-profit" : "text-loss")}>
+            {formatPercent(item.eth_ratio_change_pct || 0)}
+          </span>
+        </td>
         <td className="font-mono">{formatVolume(item.volume_24h || 0)}</td>
         <td>
           <div className="flex flex-wrap gap-1">
@@ -580,7 +699,7 @@ function ResultRow({ item, rank, onViewChart, onToggleWatchlist, onOpenTrade, is
       </tr>
       {expanded && (
         <tr>
-          <td colSpan={11} className="bg-muted/30 p-4">
+          <td colSpan={12} className="bg-muted/30 p-4">
             <div className="grid grid-cols-2 md:grid-cols-6 gap-4 text-sm">
               <div>
                 <span className="text-muted-foreground">Beta Score</span>
