@@ -188,22 +188,21 @@ class BinanceService:
             btc_ticker = self.fetch_ticker('BTC/USDT')
             eth_ticker = self.fetch_ticker('ETH/USDT')
 
-            # Calculate total volume from BTC and ETH (approximation)
-            btc_volume = btc_ticker.get('quoteVolume', 0) or 0
-            eth_volume = eth_ticker.get('quoteVolume', 0) or 0
-            total_volume = btc_volume + eth_volume
-
-            # Get Fear & Greed Index from alternative.me API
+            # Get Fear & Greed Index from CMC (with alternative.me fallback)
             fear_greed = self._get_fear_greed_index()
+
+            # Get Altcoin Season Index from blockchaincenter.net
+            altcoin_season = self._get_altcoin_season_index()
 
             return {
                 'btc_price': btc_ticker.get('last', 0),
                 'eth_price': eth_ticker.get('last', 0),
                 'btc_change_24h': btc_ticker.get('percentage', 0),
                 'eth_change_24h': eth_ticker.get('percentage', 0),
-                'total_volume': total_volume,
                 'fear_greed_index': fear_greed.get('value', 0),
                 'fear_greed_label': fear_greed.get('label', 'N/A'),
+                'altcoin_season_index': altcoin_season.get('value', 0),
+                'altcoin_season_label': altcoin_season.get('label', 'N/A'),
             }
         except Exception as e:
             print(f"Error getting market overview: {e}")
@@ -212,13 +211,82 @@ class BinanceService:
                 'eth_price': 0,
                 'btc_change_24h': 0,
                 'eth_change_24h': 0,
-                'total_volume': 0,
                 'fear_greed_index': 0,
                 'fear_greed_label': 'N/A',
+                'altcoin_season_index': 0,
+                'altcoin_season_label': 'N/A',
             }
 
     def _get_fear_greed_index(self) -> Dict:
-        """Get Crypto Fear & Greed Index from alternative.me"""
+        """Get CMC Crypto Fear & Greed Index by scraping CoinMarketCap page"""
+        try:
+            import requests
+            import re
+
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            }
+
+            response = requests.get(
+                'https://coinmarketcap.com/charts/fear-and-greed-index/',
+                headers=headers,
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                html = response.text
+
+                # Look for the fear and greed value in the page
+                # CMC embeds the data in __NEXT_DATA__ JSON
+                import json
+                next_data_match = re.search(r'<script id="__NEXT_DATA__" type="application/json">(.+?)</script>', html)
+
+                if next_data_match:
+                    try:
+                        next_data = json.loads(next_data_match.group(1))
+                        # Navigate to fear and greed data
+                        page_props = next_data.get('props', {}).get('pageProps', {})
+                        fng_data = page_props.get('fearGreedIndex', {})
+
+                        if fng_data:
+                            value = int(fng_data.get('score', 0))
+                            # Determine label based on value
+                            if value >= 75:
+                                label = 'Extreme Greed'
+                            elif value >= 55:
+                                label = 'Greed'
+                            elif value >= 45:
+                                label = 'Neutral'
+                            elif value >= 25:
+                                label = 'Fear'
+                            else:
+                                label = 'Extreme Fear'
+
+                            return {'value': value, 'label': label}
+                    except json.JSONDecodeError:
+                        pass
+
+                # Fallback: try regex patterns
+                value_match = re.search(r'"score"\s*:\s*(\d+)', html)
+                if value_match:
+                    value = int(value_match.group(1))
+                    if value >= 75:
+                        label = 'Extreme Greed'
+                    elif value >= 55:
+                        label = 'Greed'
+                    elif value >= 45:
+                        label = 'Neutral'
+                    elif value >= 25:
+                        label = 'Fear'
+                    else:
+                        label = 'Extreme Fear'
+                    return {'value': value, 'label': label}
+
+        except Exception as e:
+            print(f"Error getting CMC Fear & Greed index: {e}")
+
+        # Fallback to alternative.me if CMC fails
         try:
             import requests
             response = requests.get('https://api.alternative.me/fng/?limit=1', timeout=5)
@@ -231,5 +299,50 @@ class BinanceService:
                         'label': fng.get('value_classification', 'N/A')
                     }
         except Exception as e:
-            print(f"Error getting Fear & Greed index: {e}")
+            print(f"Error getting alternative.me Fear & Greed index: {e}")
+
+        return {'value': 0, 'label': 'N/A'}
+
+    def _get_altcoin_season_index(self) -> Dict:
+        """Get CMC Altcoin Season Index by scraping CoinMarketCap page"""
+        try:
+            import requests
+            import re
+
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            }
+
+            response = requests.get(
+                'https://coinmarketcap.com/charts/altcoin-season-index/',
+                headers=headers,
+                timeout=10
+            )
+
+            if response.status_code == 200:
+                html = response.text
+
+                # Look for altcoinIndex in page data
+                value_match = re.search(r'altcoinIndex["\']?\s*:\s*(\d+)', html)
+
+                if value_match:
+                    value = int(value_match.group(1))
+
+                    # Determine label based on CMC methodology
+                    # >= 75: Altcoin Season, <= 25: Bitcoin Season
+                    if value >= 75:
+                        label = 'Altcoin Season'
+                    elif value >= 50:
+                        label = 'Altcoin Month'
+                    elif value >= 25:
+                        label = 'Bitcoin Month'
+                    else:
+                        label = 'Bitcoin Season'
+
+                    return {'value': value, 'label': label}
+
+        except Exception as e:
+            print(f"Error getting CMC Altcoin Season index: {e}")
+
         return {'value': 0, 'label': 'N/A'}

@@ -356,11 +356,15 @@ export default function ScreenerPage() {
             color="orange"
           />
           <StatsCard
-            title="TOTAL MARKET"
-            value={formatVolume(marketData.total_volume || 0)}
-            subtext="24h Volume"
+            title="ALTCOIN SEASON"
+            value={`${marketData.altcoin_season_index || 0}/100`}
+            subtext={marketData.altcoin_season_label || 'N/A'}
             icon={<TrendingUp className="w-5 h-5" />}
-            color="green"
+            color={
+              (marketData.altcoin_season_index || 0) >= 75 ? 'green' :
+              (marketData.altcoin_season_index || 0) >= 50 ? 'orange' :
+              (marketData.altcoin_season_index || 0) >= 25 ? 'orange' : 'purple'
+            }
           />
           <StatsCard
             title="FEAR & GREED"
