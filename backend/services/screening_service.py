@@ -365,24 +365,19 @@ class ScreeningService:
         return changes
 
     def _save_screening_results(self, results: List[Dict], timeframe: str):
-        """Save screening results to database"""
+        """Save screening results to database using atomic batch operation"""
+        if not results:
+            return
+
         try:
             from datetime import timedelta
 
-            # 删除同一时间窗口内的旧记录（5分钟内）避免重复
-            if results:
-                current_time = results[0]['timestamp']
-                time_window_start = current_time - timedelta(minutes=5)
+            current_time = results[0]['timestamp']
+            time_window_start = current_time - timedelta(minutes=5)
 
-                # 删除时间窗口内的旧筛选结果
-                self.db.query(ScreeningResult).filter(
-                    ScreeningResult.timestamp >= time_window_start,
-                    ScreeningResult.timestamp <= current_time,
-                    ScreeningResult.timeframe == timeframe
-                ).delete(synchronize_session=False)
-
-            for result in results:
-                screening_result = ScreeningResult(
+            # 准备批量插入的对象列表
+            screening_objects = [
+                ScreeningResult(
                     symbol=result['symbol'],
                     timestamp=result['timestamp'],
                     timeframe=timeframe,
@@ -407,9 +402,24 @@ class ScreeningService:
                     volume_change_pct=result['volume_change_pct'],
                     current_price=result['current_price'],
                 )
-                self.db.add(screening_result)
+                for result in results
+            ]
 
+            # 原子操作：删除旧记录 + 批量插入新记录
+            # 使用 synchronize_session='fetch' 确保会话状态同步
+            deleted_count = self.db.query(ScreeningResult).filter(
+                ScreeningResult.timestamp >= time_window_start,
+                ScreeningResult.timestamp <= current_time,
+                ScreeningResult.timeframe == timeframe
+            ).delete(synchronize_session='fetch')
+
+            # 批量添加所有对象
+            self.db.add_all(screening_objects)
             self.db.commit()
+
+            if deleted_count > 0:
+                print(f"  DB: Replaced {deleted_count} old records with {len(results)} new records")
+
         except Exception as e:
             print(f"Error saving screening results: {e}")
             self.db.rollback()
