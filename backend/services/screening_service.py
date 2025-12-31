@@ -66,8 +66,8 @@ class ScreeningService:
 
         # Pre-filter by volume to speed up screening
         print(f"Pre-filtering by volume (min: ${min_volume:,.0f})...")
-        altcoins = self._prefilter_by_volume(all_altcoins, min_volume)
-        print(f"After pre-filter: {len(altcoins)} altcoins")
+        altcoins, cached_tickers = self._prefilter_by_volume(all_altcoins, min_volume)
+        print(f"After pre-filter: {len(altcoins)} altcoins (cached {len(cached_tickers)} tickers)")
         print(f"Screening {len(altcoins)} altcoins with {MAX_WORKERS} parallel workers...")
 
         start_time = time.time()
@@ -77,7 +77,7 @@ class ScreeningService:
 
         # 使用线程池并行处理
         with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-            # 提交所有任务
+            # 提交所有任务，传入缓存的ticker数据避免重复API调用
             future_to_symbol = {
                 executor.submit(
                     self._screen_single_coin,
@@ -87,7 +87,8 @@ class ScreeningService:
                     eth_price=eth_price,
                     min_volume=min_volume,
                     min_price_change=min_price_change,
-                    save_klines=False  # 并行时不保存K线，避免SQLite并发写入问题
+                    save_klines=False,  # 并行时不保存K线，避免SQLite并发写入问题
+                    cached_ticker=cached_tickers.get(symbol)  # 复用预筛选的ticker数据
                 ): symbol
                 for symbol in altcoins
             }
@@ -129,22 +130,24 @@ class ScreeningService:
         eth_price: float,
         min_volume: float,
         min_price_change: float,
-        save_klines: bool = True
+        save_klines: bool = True,
+        cached_ticker: Dict = None
     ) -> Dict:
         """Screen a single coin
 
         Args:
             save_klines: Whether to save kline data to DB. Set False for parallel execution.
+            cached_ticker: Pre-fetched ticker data to avoid duplicate API calls.
         """
 
-        # Fetch ticker for volume check
-        ticker = self.binance.fetch_ticker(symbol)
+        # Use cached ticker or fetch new one
+        ticker = cached_ticker if cached_ticker else self.binance.fetch_ticker(symbol)
         if not ticker:
             return None
 
         volume_24h = ticker.get('quoteVolume', 0)
 
-        # Filter by minimum volume
+        # Filter by minimum volume (already filtered in prefilter, but double-check)
         if volume_24h < min_volume:
             return None
 
@@ -262,14 +265,17 @@ class ScreeningService:
             'volume_change_pct': float(ticker.get('percentage', 0) or 0),
         }
 
-    def _prefilter_by_volume(self, symbols: List[str], min_volume: float) -> List[str]:
+    def _prefilter_by_volume(self, symbols: List[str], min_volume: float) -> Tuple[List[str], Dict]:
         """
         Pre-filter symbols by 24h volume to speed up screening
         Uses batch ticker API for efficiency
+
+        Returns:
+            Tuple of (filtered_symbols, tickers_dict) - tickers can be reused by screening
         """
         try:
             # Fetch all tickers at once
-            tickers = self.binance.exchange.fetch_tickers(symbols)
+            tickers = self.binance.public_exchange.fetch_tickers(symbols)
 
             # Filter by volume
             filtered = []
@@ -280,10 +286,10 @@ class ScreeningService:
                     if volume_usd >= min_volume:
                         filtered.append(symbol)
 
-            return filtered
+            return filtered, tickers
         except Exception as e:
             print(f"Error in pre-filter: {e}, using all symbols")
-            return symbols
+            return symbols, {}
 
     def _calculate_beta_score(
         self,
