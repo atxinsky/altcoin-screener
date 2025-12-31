@@ -188,11 +188,22 @@ class BinanceService:
             btc_ticker = self.fetch_ticker('BTC/USDT')
             eth_ticker = self.fetch_ticker('ETH/USDT')
 
+            # Calculate total volume from BTC and ETH (approximation)
+            btc_volume = btc_ticker.get('quoteVolume', 0) or 0
+            eth_volume = eth_ticker.get('quoteVolume', 0) or 0
+            total_volume = btc_volume + eth_volume
+
+            # Get Fear & Greed Index from alternative.me API
+            fear_greed = self._get_fear_greed_index()
+
             return {
                 'btc_price': btc_ticker.get('last', 0),
                 'eth_price': eth_ticker.get('last', 0),
                 'btc_change_24h': btc_ticker.get('percentage', 0),
                 'eth_change_24h': eth_ticker.get('percentage', 0),
+                'total_volume': total_volume,
+                'fear_greed_index': fear_greed.get('value', 0),
+                'fear_greed_label': fear_greed.get('label', 'N/A'),
             }
         except Exception as e:
             print(f"Error getting market overview: {e}")
@@ -201,4 +212,24 @@ class BinanceService:
                 'eth_price': 0,
                 'btc_change_24h': 0,
                 'eth_change_24h': 0,
+                'total_volume': 0,
+                'fear_greed_index': 0,
+                'fear_greed_label': 'N/A',
             }
+
+    def _get_fear_greed_index(self) -> Dict:
+        """Get Crypto Fear & Greed Index from alternative.me"""
+        try:
+            import requests
+            response = requests.get('https://api.alternative.me/fng/?limit=1', timeout=5)
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('data') and len(data['data']) > 0:
+                    fng = data['data'][0]
+                    return {
+                        'value': int(fng.get('value', 0)),
+                        'label': fng.get('value_classification', 'N/A')
+                    }
+        except Exception as e:
+            print(f"Error getting Fear & Greed index: {e}")
+        return {'value': 0, 'label': 'N/A'}

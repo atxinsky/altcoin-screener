@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+// ATR_BUILD_MARKER_20251231_1825
+console.log('SimTradingPanel loaded with ATR support v1.0');
 import {
   Card,
   Row,
@@ -115,6 +117,12 @@ const SimTradingPanel = () => {
           values.take_profit_2 || 10.0,
           values.take_profit_3 || 15.0
         ],
+        // ATR take profit multipliers
+        atr_tp_multipliers: [
+          values.atr_tp_1 || 2.5,
+          values.atr_tp_2 || 3.5,
+          values.atr_tp_3 || 5.0
+        ],
         // 策略配置JSON
         strategy_config: {
           require_macd_golden: values.require_macd_golden,
@@ -128,6 +136,9 @@ const SimTradingPanel = () => {
       delete payload.take_profit_1;
       delete payload.take_profit_2;
       delete payload.take_profit_3;
+      delete payload.atr_tp_1;
+      delete payload.atr_tp_2;
+      delete payload.atr_tp_3;
       delete payload.require_macd_golden;
       delete payload.require_volume_surge;
       delete payload.trailing_stop_enabled;
@@ -625,7 +636,16 @@ const SimTradingPanel = () => {
             entry_timeframe: '15m',
             entry_score_min: 75.0,
             entry_technical_min: 60.0,
+            // Exit mode settings
+            exit_mode: 'fixed',
             stop_loss_pct: 3.0,
+            hard_stop_pct: 5.0,
+            // ATR settings
+            atr_stop_multiplier: 2.0,
+            atr_tp_1: 2.5,
+            atr_tp_2: 3.5,
+            atr_tp_3: 5.0,
+            // Fixed percentage TP
             take_profit_1: 6.0,
             take_profit_2: 10.0,
             take_profit_3: 15.0,
@@ -721,14 +741,67 @@ const SimTradingPanel = () => {
             </Col>
           </Row>
 
-          <Divider orientation="left">止损设置</Divider>
+          <Divider orientation="left">止盈止损模式</Divider>
 
           <Row gutter={16}>
+            <Col span={8}>
+              <Form.Item name="exit_mode" label={
+                <span>止损模式 <Tooltip title="Fixed: 固定百分比; ATR: 根据波动率动态调整"><InfoCircleOutlined /></Tooltip></span>
+              }>
+                <Select>
+                  <Select.Option value="fixed">Fixed 固定百分比</Select.Option>
+                  <Select.Option value="atr">ATR 动态波动率</Select.Option>
+                </Select>
+              </Form.Item>
+            </Col>
+            <Col span={8}>
+              <Form.Item name="hard_stop_pct" label={
+                <span>保底止损 (%) <Tooltip title="无论ATR计算结果如何，止损不会低于此百分比"><InfoCircleOutlined /></Tooltip></span>
+              }>
+                <InputNumber min={1} max={20} step={0.5} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
             <Col span={8}>
               <Form.Item name="stop_loss_pct" label="固定止损 (%)">
                 <InputNumber min={0.5} max={20} step={0.5} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
+          </Row>
+
+          <Divider orientation="left" style={{ fontSize: '12px', color: '#888' }}>ATR动态止损配置 (仅ATR模式生效)</Divider>
+
+          <Row gutter={16}>
+            <Col span={6}>
+              <Form.Item name="atr_stop_multiplier" label={
+                <span>止损ATR倍数 <Tooltip title="止损价 = 入场价 - (ATR × 倍数)"><InfoCircleOutlined /></Tooltip></span>
+              }>
+                <InputNumber min={0.5} max={5} step={0.5} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item name="atr_tp_1" label={
+                <span>TP1 ATR倍数 <Tooltip title="止盈1 = 入场价 + (ATR × 倍数)"><InfoCircleOutlined /></Tooltip></span>
+              }>
+                <InputNumber min={1} max={10} step={0.5} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item name="atr_tp_2" label={
+                <span>TP2 ATR倍数 <Tooltip title="止盈2 = 入场价 + (ATR × 倍数)"><InfoCircleOutlined /></Tooltip></span>
+              }>
+                <InputNumber min={1} max={15} step={0.5} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+            <Col span={6}>
+              <Form.Item name="atr_tp_3" label={
+                <span>TP3 ATR倍数 <Tooltip title="止盈3 = 入场价 + (ATR × 倍数)"><InfoCircleOutlined /></Tooltip></span>
+              }>
+                <InputNumber min={1} max={20} step={0.5} style={{ width: '100%' }} />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
             <Col span={8}>
               <Form.Item name="trailing_stop_enabled" valuePropName="checked" label="启用追踪止损">
                 <Switch checkedChildren="是" unCheckedChildren="否" />
@@ -743,7 +816,7 @@ const SimTradingPanel = () => {
             </Col>
           </Row>
 
-          <Divider orientation="left">止盈设置 (分批止盈)</Divider>
+          <Divider orientation="left">固定百分比止盈 (仅Fixed模式生效)</Divider>
 
           <Row gutter={16}>
             <Col span={8}>
@@ -769,10 +842,10 @@ const SimTradingPanel = () => {
             </Col>
           </Row>
 
-          <div style={{ background: '#f5f5f5', padding: '12px', borderRadius: '4px', marginTop: '8px' }}>
-            <small style={{ color: '#666' }}>
-              <strong>策略说明：</strong> 系统将按照设定的条件自动筛选并开仓，分批止盈时会在TP1/TP2/TP3分别平仓33%的仓位。
-              追踪止损会在盈利后动态调整止损位。
+          <div style={{ background: '#e6f7ff', padding: '12px', borderRadius: '4px', marginTop: '8px', border: '1px solid #91d5ff' }}>
+            <small style={{ color: '#0050b3' }}>
+              <strong>ATR模式说明：</strong> ATR(平均真实波幅)根据币种波动率动态计算止盈止损价位。
+              高波动币种会有更宽的止损空间，低波动币种则止损更紧。保底止损确保最大亏损不超过设定百分比。
             </small>
           </div>
         </Form>

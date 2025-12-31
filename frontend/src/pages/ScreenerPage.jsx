@@ -363,11 +363,16 @@ export default function ScreenerPage() {
             color="green"
           />
           <StatsCard
-            title="ACTIVE PAIRS"
-            value={stats?.total_symbols || '-'}
-            subtext="Tracking"
+            title="FEAR & GREED"
+            value={marketData.fear_greed_index || 0}
+            subtext={marketData.fear_greed_label || 'N/A'}
             icon={<Zap className="w-5 h-5" />}
-            color="default"
+            color={
+              (marketData.fear_greed_index || 0) >= 75 ? 'green' :
+              (marketData.fear_greed_index || 0) >= 55 ? 'default' :
+              (marketData.fear_greed_index || 0) >= 45 ? 'orange' :
+              (marketData.fear_greed_index || 0) >= 25 ? 'orange' : 'red'
+            }
           />
         </div>
       )}
