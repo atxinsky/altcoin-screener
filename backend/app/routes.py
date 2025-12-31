@@ -846,6 +846,11 @@ class CreateSimAccountRequest(BaseModel):
     entry_technical_min: float = 60.0
     stop_loss_pct: float = 3.0
     take_profit_levels: List[float] = [6.0, 9.0, 12.0]
+    # ATR-based exit settings
+    exit_mode: str = 'fixed'  # 'fixed' or 'atr'
+    hard_stop_pct: float = 5.0  # Hard stop floor
+    atr_stop_multiplier: float = 2.0  # ATR * multiplier for SL
+    atr_tp_multipliers: List[float] = [2.5, 3.5, 5.0]  # ATR multipliers for TP
 
 
 class UpdateSimAccountRequest(BaseModel):
@@ -856,6 +861,11 @@ class UpdateSimAccountRequest(BaseModel):
     entry_technical_min: Optional[float] = None
     stop_loss_pct: Optional[float] = None
     take_profit_levels: Optional[List[float]] = None
+    # ATR-based exit settings
+    exit_mode: Optional[str] = None  # 'fixed' or 'atr'
+    hard_stop_pct: Optional[float] = None  # Hard stop floor
+    atr_stop_multiplier: Optional[float] = None  # ATR * multiplier for SL
+    atr_tp_multipliers: Optional[List[float]] = None  # ATR multipliers for TP
 
 
 class OpenPositionRequest(BaseModel):
@@ -896,7 +906,11 @@ async def create_sim_account(
             entry_score_min=request.entry_score_min,
             entry_technical_min=request.entry_technical_min,
             stop_loss_pct=request.stop_loss_pct,
-            take_profit_levels=request.take_profit_levels
+            take_profit_levels=request.take_profit_levels,
+            exit_mode=request.exit_mode,
+            hard_stop_pct=request.hard_stop_pct,
+            atr_stop_multiplier=request.atr_stop_multiplier,
+            atr_tp_multipliers=request.atr_tp_multipliers
         )
 
         return {
@@ -997,6 +1011,15 @@ async def update_sim_account(
             account.stop_loss_pct = request.stop_loss_pct
         if request.take_profit_levels is not None:
             account.take_profit_levels = request.take_profit_levels
+        # ATR-based exit settings
+        if request.exit_mode is not None:
+            account.exit_mode = request.exit_mode
+        if request.hard_stop_pct is not None:
+            account.hard_stop_pct = request.hard_stop_pct
+        if request.atr_stop_multiplier is not None:
+            account.atr_stop_multiplier = request.atr_stop_multiplier
+        if request.atr_tp_multipliers is not None:
+            account.atr_tp_multipliers = request.atr_tp_multipliers
 
         account.updated_at = datetime.utcnow()
         db.commit()
@@ -1006,7 +1029,8 @@ async def update_sim_account(
             "success": True,
             "message": "Account updated successfully",
             "account_id": account.id,
-            "auto_trading_enabled": account.auto_trading_enabled
+            "auto_trading_enabled": account.auto_trading_enabled,
+            "exit_mode": account.exit_mode
         }
 
     except HTTPException:

@@ -117,7 +117,16 @@ function PaperTradingSection() {
     entry_timeframe: '15m',
     entry_score_min: 75.0,
     entry_technical_min: 60.0,
+    // Exit mode settings
+    exit_mode: 'fixed',
     stop_loss_pct: 3.0,
+    hard_stop_pct: 5.0,
+    // ATR settings
+    atr_stop_multiplier: 2.0,
+    atr_tp_1: 2.5,
+    atr_tp_2: 3.5,
+    atr_tp_3: 5.0,
+    // Fixed percentage TP
     take_profit_1: 6.0,
     take_profit_2: 10.0,
     take_profit_3: 15.0,
@@ -175,6 +184,7 @@ function PaperTradingSection() {
       const payload = {
         ...formData,
         take_profit_levels: [formData.take_profit_1, formData.take_profit_2, formData.take_profit_3],
+        atr_tp_multipliers: [formData.atr_tp_1, formData.atr_tp_2, formData.atr_tp_3],
         strategy_config: {
           require_macd_golden: formData.require_macd_golden,
           require_volume_surge: formData.require_volume_surge,
@@ -186,6 +196,9 @@ function PaperTradingSection() {
       delete payload.take_profit_1
       delete payload.take_profit_2
       delete payload.take_profit_3
+      delete payload.atr_tp_1
+      delete payload.atr_tp_2
+      delete payload.atr_tp_3
       delete payload.require_macd_golden
       delete payload.require_volume_surge
       delete payload.trailing_stop_enabled
@@ -197,7 +210,9 @@ function PaperTradingSection() {
       setFormData({
         account_name: '', initial_balance: 10000, max_positions: 5, position_size_pct: 2.0,
         entry_timeframe: '15m', entry_score_min: 75.0, entry_technical_min: 60.0,
-        stop_loss_pct: 3.0, take_profit_1: 6.0, take_profit_2: 10.0, take_profit_3: 15.0,
+        exit_mode: 'fixed', stop_loss_pct: 3.0, hard_stop_pct: 5.0,
+        atr_stop_multiplier: 2.0, atr_tp_1: 2.5, atr_tp_2: 3.5, atr_tp_3: 5.0,
+        take_profit_1: 6.0, take_profit_2: 10.0, take_profit_3: 15.0,
         require_macd_golden: true, require_volume_surge: false, trailing_stop_enabled: false,
         trailing_stop_pct: 2.0, max_holding_hours: 24
       })
@@ -549,12 +564,48 @@ function PaperTradingSection() {
               </div>
             </div>
             <div className="border-t border-border pt-4">
-              <h4 className="text-sm font-mono text-muted-foreground mb-4">STOP LOSS</h4>
+              <h4 className="text-sm font-mono text-muted-foreground mb-4">EXIT MODE</h4>
               <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <label className="text-xs font-mono text-muted-foreground mb-2 block">STOP LOSS (%)</label>
+                  <label className="text-xs font-mono text-muted-foreground mb-2 block">MODE</label>
+                  <Select value={formData.exit_mode} onValueChange={(v) => updateForm('exit_mode', v)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="fixed">FIXED %</SelectItem>
+                      <SelectItem value="atr">ATR DYNAMIC</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-xs font-mono text-muted-foreground mb-2 block">HARD STOP (%)</label>
+                  <Input type="number" step={0.5} value={formData.hard_stop_pct} onChange={(e) => updateForm('hard_stop_pct', Number(e.target.value))} />
+                </div>
+                <div>
+                  <label className="text-xs font-mono text-muted-foreground mb-2 block">FIXED SL (%)</label>
                   <Input type="number" step={0.5} value={formData.stop_loss_pct} onChange={(e) => updateForm('stop_loss_pct', Number(e.target.value))} />
                 </div>
+              </div>
+              {formData.exit_mode === 'atr' && (
+                <div className="grid grid-cols-4 gap-4 mt-4 p-3 bg-muted/30 border border-border">
+                  <div>
+                    <label className="text-xs font-mono text-muted-foreground mb-2 block">ATR SL ×</label>
+                    <Input type="number" step={0.5} value={formData.atr_stop_multiplier} onChange={(e) => updateForm('atr_stop_multiplier', Number(e.target.value))} />
+                  </div>
+                  <div>
+                    <label className="text-xs font-mono text-muted-foreground mb-2 block">ATR TP1 ×</label>
+                    <Input type="number" step={0.5} value={formData.atr_tp_1} onChange={(e) => updateForm('atr_tp_1', Number(e.target.value))} />
+                  </div>
+                  <div>
+                    <label className="text-xs font-mono text-muted-foreground mb-2 block">ATR TP2 ×</label>
+                    <Input type="number" step={0.5} value={formData.atr_tp_2} onChange={(e) => updateForm('atr_tp_2', Number(e.target.value))} />
+                  </div>
+                  <div>
+                    <label className="text-xs font-mono text-muted-foreground mb-2 block">ATR TP3 ×</label>
+                    <Input type="number" step={0.5} value={formData.atr_tp_3} onChange={(e) => updateForm('atr_tp_3', Number(e.target.value))} />
+                  </div>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-4 mt-4">
                 <div className="flex items-center justify-between p-3 border border-border">
                   <span className="text-sm">TRAILING STOP</span>
                   <Switch checked={formData.trailing_stop_enabled} onCheckedChange={(v) => updateForm('trailing_stop_enabled', v)} />

@@ -90,6 +90,59 @@ class IndicatorService:
         return df
 
     @staticmethod
+    def calculate_atr(df: pd.DataFrame, period: int = 14) -> pd.DataFrame:
+        """
+        Calculate Average True Range (ATR) indicator
+
+        ATR measures market volatility by calculating the average of true ranges.
+        True Range = max(high - low, abs(high - prev_close), abs(low - prev_close))
+
+        Args:
+            df: DataFrame with OHLCV data
+            period: ATR period (default 14)
+
+        Returns:
+            DataFrame with 'atr' and 'atr_pct' columns added
+        """
+        if df.empty or len(df) < period + 1:
+            df['atr'] = np.nan
+            df['atr_pct'] = np.nan
+            return df
+
+        # Calculate True Range components
+        high_low = df['high'] - df['low']
+        high_prev_close = abs(df['high'] - df['close'].shift(1))
+        low_prev_close = abs(df['low'] - df['close'].shift(1))
+
+        # True Range is the maximum of the three
+        true_range = pd.concat([high_low, high_prev_close, low_prev_close], axis=1).max(axis=1)
+
+        # ATR is the exponential moving average of True Range
+        df['atr'] = true_range.ewm(span=period, adjust=False).mean()
+
+        # ATR as percentage of price (useful for comparison across different price levels)
+        df['atr_pct'] = (df['atr'] / df['close']) * 100
+
+        return df
+
+    @staticmethod
+    def get_current_atr(df: pd.DataFrame) -> tuple:
+        """
+        Get current ATR value and percentage
+
+        Returns:
+            (atr_value, atr_pct) or (None, None) if not available
+        """
+        if df.empty or 'atr' not in df.columns:
+            return None, None
+
+        latest = df.iloc[-1]
+        atr_value = latest['atr'] if pd.notna(latest['atr']) else None
+        atr_pct = latest['atr_pct'] if pd.notna(latest['atr_pct']) else None
+
+        return atr_value, atr_pct
+
+    @staticmethod
     def calculate_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
         """Calculate all technical indicators"""
         if df.empty or len(df) < 200:
@@ -100,6 +153,7 @@ class IndicatorService:
         df = IndicatorService.calculate_rsi(df)
         df = IndicatorService.calculate_bollinger_bands(df)
         df = IndicatorService.calculate_volume_indicators(df)
+        df = IndicatorService.calculate_atr(df)
 
         return df
 

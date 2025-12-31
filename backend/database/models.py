@@ -291,6 +291,12 @@ class SimAccount(Base):
     stop_loss_pct = Column(Float, default=3.0)
     take_profit_levels = Column(JSON, default=[6.0, 10.0, 15.0])  # Multiple TP levels
 
+    # ATR-based dynamic exit configuration
+    exit_mode = Column(String, default='fixed')  # 'fixed' or 'atr'
+    hard_stop_pct = Column(Float, default=5.0)  # Hard floor stop loss (safety net)
+    atr_stop_multiplier = Column(Float, default=2.0)  # Stop loss = entry - (ATR * multiplier)
+    atr_tp_multipliers = Column(JSON, default=[2.5, 3.5, 5.0])  # Take profit ATR multipliers
+
     # Strategy config - advanced (JSON for flexibility)
     strategy_config = Column(JSON, default={
         'require_macd_golden': True,
@@ -324,6 +330,8 @@ class SimPosition(Base):
     quantity = Column(Float, nullable=False)
     entry_value = Column(Float, nullable=False)  # Total value at entry
     entry_score = Column(Float)  # Screening score at entry
+    entry_atr = Column(Float)  # ATR value at entry time
+    entry_atr_pct = Column(Float)  # ATR as percentage of price at entry
 
     # Current status
     current_price = Column(Float)

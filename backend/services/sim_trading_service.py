@@ -12,6 +12,7 @@ from backend.database.models import (
     ScreeningResult
 )
 from backend.services.binance_service import BinanceService
+from backend.services.indicator_service import IndicatorService
 
 
 class SimTradingService:
@@ -101,7 +102,9 @@ class SimTradingService:
         entry_price: float,
         position_size_pct: float = None,
         entry_score: float = None,
-        entry_signals: Dict = None
+        entry_signals: Dict = None,
+        entry_atr: float = None,
+        entry_atr_pct: float = None
     ) -> Tuple[bool, str, Optional[SimPosition]]:
         """
         Open a new position
@@ -152,13 +155,16 @@ class SimTradingService:
         # Calculate commission
         commission = position_value * self.commission_rate
 
-        # Calculate stop loss and take profit prices
-        stop_loss_price = entry_price * (1 - account.stop_loss_pct / 100.0)
+        # Get ATR for dynamic exits if not provided and mode is 'atr'
+        exit_mode = getattr(account, 'exit_mode', 'fixed') or 'fixed'
+        if exit_mode == 'atr' and entry_atr is None:
+            entry_timeframe = getattr(account, 'entry_timeframe', '15m') or '15m'
+            entry_atr, entry_atr_pct = self._get_symbol_atr(symbol, entry_timeframe)
 
-        take_profit_prices = [
-            entry_price * (1 + tp_pct / 100.0)
-            for tp_pct in account.take_profit_levels
-        ]
+        # Calculate stop loss and take profit prices (using ATR if available)
+        stop_loss_price, take_profit_prices = self._calculate_exit_prices(
+            account, entry_price, entry_atr
+        )
 
         # Create position
         position = SimPosition(
@@ -169,6 +175,8 @@ class SimTradingService:
             quantity=quantity,
             entry_value=position_value,
             entry_score=entry_score,
+            entry_atr=entry_atr,
+            entry_atr_pct=entry_atr_pct,
             current_price=entry_price,
             current_value=position_value,
             stop_loss_price=stop_loss_price,
@@ -664,6 +672,85 @@ class SimTradingService:
             print(f"Error fetching price for {symbol}: {e}")
             return None
 
+    def _get_symbol_atr(self, symbol: str, timeframe: str = '15m') -> Tuple[Optional[float], Optional[float]]:
+        """
+        Get current ATR for a symbol
+
+        Args:
+            symbol: Trading pair symbol
+            timeframe: Timeframe for ATR calculation
+
+        Returns:
+            (atr_value, atr_pct) or (None, None) if not available
+        """
+        try:
+            # Fetch recent kline data
+            klines = self.binance.fetch_klines(symbol, timeframe, limit=50)
+            if not klines or len(klines) < 20:
+                return None, None
+
+            import pandas as pd
+            df = pd.DataFrame(klines, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume',
+                                                'close_time', 'quote_volume', 'trades',
+                                                'taker_buy_base', 'taker_buy_quote', 'ignore'])
+            df['open'] = df['open'].astype(float)
+            df['high'] = df['high'].astype(float)
+            df['low'] = df['low'].astype(float)
+            df['close'] = df['close'].astype(float)
+
+            # Calculate ATR
+            df = IndicatorService.calculate_atr(df)
+            return IndicatorService.get_current_atr(df)
+
+        except Exception as e:
+            print(f"Error getting ATR for {symbol}: {e}")
+            return None, None
+
+    def _calculate_exit_prices(
+        self,
+        account: SimAccount,
+        entry_price: float,
+        atr_value: Optional[float] = None
+    ) -> Tuple[float, List[float]]:
+        """
+        Calculate stop loss and take profit prices based on account's exit mode
+
+        Args:
+            account: SimAccount with exit configuration
+            entry_price: Entry price
+            atr_value: ATR value (required for 'atr' mode)
+
+        Returns:
+            (stop_loss_price, take_profit_prices)
+        """
+        exit_mode = getattr(account, 'exit_mode', 'fixed') or 'fixed'
+        hard_stop_pct = getattr(account, 'hard_stop_pct', 5.0) or 5.0
+
+        if exit_mode == 'atr' and atr_value and atr_value > 0:
+            # ATR-based dynamic exits with hard stop floor
+            atr_stop_mult = getattr(account, 'atr_stop_multiplier', 2.0) or 2.0
+            atr_tp_mults = getattr(account, 'atr_tp_multipliers', [2.5, 3.5, 5.0]) or [2.5, 3.5, 5.0]
+
+            # Stop loss: ATR-based but not lower than hard stop
+            atr_stop_price = entry_price - (atr_value * atr_stop_mult)
+            hard_stop_price = entry_price * (1 - hard_stop_pct / 100.0)
+            stop_loss_price = max(atr_stop_price, hard_stop_price)
+
+            # Take profits: based on ATR multiples
+            take_profit_prices = [
+                entry_price + (atr_value * mult)
+                for mult in atr_tp_mults
+            ]
+        else:
+            # Fixed percentage mode (original behavior)
+            stop_loss_price = entry_price * (1 - account.stop_loss_pct / 100.0)
+            take_profit_prices = [
+                entry_price * (1 + tp_pct / 100.0)
+                for tp_pct in account.take_profit_levels
+            ]
+
+        return stop_loss_price, take_profit_prices
+
     def get_account_summary(self, account_id: int) -> Dict:
         """Get comprehensive account summary"""
         account = self.get_account(account_id)
@@ -724,6 +811,8 @@ class SimTradingService:
             'remaining_quantity': position.remaining_quantity,
             'entry_value': position.entry_value,
             'entry_score': position.entry_score,
+            'entry_atr': position.entry_atr,
+            'entry_atr_pct': position.entry_atr_pct,
             'current_price': position.current_price,
             'current_value': position.current_value,
             'unrealized_pnl': position.unrealized_pnl,
