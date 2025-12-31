@@ -9,6 +9,10 @@ from backend.services.binance_service import BinanceService
 from backend.services.indicator_service import IndicatorService
 from backend.database.models import KlineData, TechnicalIndicators, ScreeningResult
 from backend.config import settings
+from backend.utils.logger import get_screening_logger
+
+# Initialize logger
+logger = get_screening_logger()
 
 # 并行处理配置
 MAX_WORKERS = 10  # 并行线程数
@@ -57,18 +61,18 @@ class ScreeningService:
         eth_price = market_overview['eth_price']
 
         if btc_price == 0 or eth_price == 0:
-            print("Failed to get BTC/ETH prices")
+            logger.error("Failed to get BTC/ETH prices")
             return []
 
         # Get all altcoins
         all_altcoins = self.binance.get_altcoins()
-        print(f"Total altcoins: {len(all_altcoins)}")
+        logger.info(f"Total altcoins: {len(all_altcoins)}")
 
         # Pre-filter by volume to speed up screening
-        print(f"Pre-filtering by volume (min: ${min_volume:,.0f})...")
+        logger.info(f"Pre-filtering by volume (min: ${min_volume:,.0f})...")
         altcoins, cached_tickers = self._prefilter_by_volume(all_altcoins, min_volume)
-        print(f"After pre-filter: {len(altcoins)} altcoins (cached {len(cached_tickers)} tickers)")
-        print(f"Screening {len(altcoins)} altcoins with {MAX_WORKERS} parallel workers...")
+        logger.info(f"After pre-filter: {len(altcoins)} altcoins (cached {len(cached_tickers)} tickers)")
+        logger.info(f"Screening {len(altcoins)} altcoins with {MAX_WORKERS} parallel workers...")
 
         start_time = time.time()
         results = []
@@ -103,16 +107,16 @@ class ScreeningService:
                     completed_count += 1
                 except Exception as e:
                     error_count += 1
-                    # 只打印少量错误，避免日志过多
+                    # 只记录少量错误，避免日志过多
                     if error_count <= 5:
-                        print(f"Error screening {symbol}: {e}")
+                        logger.warning(f"Error screening {symbol}: {e}")
                     elif error_count == 6:
-                        print(f"... and more errors (suppressed)")
+                        logger.warning(f"... and more errors (suppressed)")
 
         elapsed = time.time() - start_time
-        print(f"Screening completed: {completed_count} coins in {elapsed:.1f}s ({len(results)} passed filters)")
+        logger.info(f"Screening completed: {completed_count} coins in {elapsed:.1f}s ({len(results)} passed filters)")
         if error_count > 0:
-            print(f"  Errors: {error_count} coins failed")
+            logger.warning(f"  Errors: {error_count} coins failed")
 
         # Sort by total score
         results = sorted(results, key=lambda x: x['total_score'], reverse=True)
@@ -165,7 +169,7 @@ class ScreeningService:
         # 如果最新数据超过1小时，说明该币种可能已下架或停止交易
         time_diff = datetime.utcnow() - latest_timestamp.replace(tzinfo=None)
         if time_diff > timedelta(hours=1):
-            print(f"跳过 {symbol}: 最新数据时间 {latest_timestamp}, 已超过1小时")
+            logger.debug(f"Skipping {symbol}: latest data {latest_timestamp} is over 1 hour old")
             return None
 
         # Save K-line data to database (skip during parallel execution)
@@ -288,7 +292,7 @@ class ScreeningService:
 
             return filtered, tickers
         except Exception as e:
-            print(f"Error in pre-filter: {e}, using all symbols")
+            logger.error(f"Error in pre-filter: {e}, using all symbols")
             return symbols, {}
 
     def _calculate_beta_score(
@@ -418,10 +422,10 @@ class ScreeningService:
             self.db.commit()
 
             if deleted_count > 0:
-                print(f"  DB: Replaced {deleted_count} old records with {len(results)} new records")
+                logger.debug(f"DB: Replaced {deleted_count} old records with {len(results)} new records")
 
         except Exception as e:
-            print(f"Error saving screening results: {e}")
+            logger.error(f"Error saving screening results: {e}")
             self.db.rollback()
 
     def _save_kline_data(self, df: pd.DataFrame, symbol: str, timeframe: str):
@@ -451,7 +455,7 @@ class ScreeningService:
 
             self.db.commit()
         except Exception as e:
-            print(f"Error saving K-line data for {symbol}: {e}")
+            logger.error(f"Error saving K-line data for {symbol}: {e}")
             self.db.rollback()
 
     def get_top_opportunities(
@@ -480,7 +484,7 @@ class ScreeningService:
 
             return [self._screening_result_to_dict(r) for r in unique_results]
         except Exception as e:
-            print(f"Error getting top opportunities: {e}")
+            logger.error(f"Error getting top opportunities: {e}")
             return []
 
     @staticmethod
@@ -563,13 +567,13 @@ class ScreeningService:
 
             total_deleted = sum(deleted.values())
             if total_deleted > 0:
-                print(f"Data cleanup: Deleted {deleted['klines_short']} short klines, "
-                      f"{deleted['klines_long']} long klines, "
-                      f"{deleted['screening_results']} screening results")
+                logger.info(f"Data cleanup: Deleted {deleted['klines_short']} short klines, "
+                            f"{deleted['klines_long']} long klines, "
+                            f"{deleted['screening_results']} screening results")
 
             return deleted
 
         except Exception as e:
-            print(f"Error during data cleanup: {e}")
+            logger.error(f"Error during data cleanup: {e}")
             self.db.rollback()
             return deleted
