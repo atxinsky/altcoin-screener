@@ -1,12 +1,18 @@
 import pandas as pd
 from typing import List, Dict, Tuple
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
 from sqlalchemy.orm import Session
 
 from backend.services.binance_service import BinanceService
 from backend.services.indicator_service import IndicatorService
 from backend.database.models import KlineData, TechnicalIndicators, ScreeningResult
 from backend.config import settings
+
+# 并行处理配置
+MAX_WORKERS = 10  # 并行线程数
+SCREENING_TIMEOUT = 120  # 筛选超时时间（秒）
 
 
 class ScreeningService:
@@ -62,27 +68,50 @@ class ScreeningService:
         print(f"Pre-filtering by volume (min: ${min_volume:,.0f})...")
         altcoins = self._prefilter_by_volume(all_altcoins, min_volume)
         print(f"After pre-filter: {len(altcoins)} altcoins")
-        print(f"Screening {len(altcoins)} altcoins...")
+        print(f"Screening {len(altcoins)} altcoins with {MAX_WORKERS} parallel workers...")
 
+        start_time = time.time()
         results = []
+        completed_count = 0
+        error_count = 0
 
-        for symbol in altcoins:
-            try:
-                result = self._screen_single_coin(
+        # 使用线程池并行处理
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+            # 提交所有任务
+            future_to_symbol = {
+                executor.submit(
+                    self._screen_single_coin,
                     symbol=symbol,
                     timeframe=timeframe,
                     btc_price=btc_price,
                     eth_price=eth_price,
                     min_volume=min_volume,
-                    min_price_change=min_price_change
-                )
+                    min_price_change=min_price_change,
+                    save_klines=False  # 并行时不保存K线，避免SQLite并发写入问题
+                ): symbol
+                for symbol in altcoins
+            }
 
-                if result:
-                    results.append(result)
+            # 收集结果
+            for future in as_completed(future_to_symbol, timeout=SCREENING_TIMEOUT):
+                symbol = future_to_symbol[future]
+                try:
+                    result = future.result()
+                    if result:
+                        results.append(result)
+                    completed_count += 1
+                except Exception as e:
+                    error_count += 1
+                    # 只打印少量错误，避免日志过多
+                    if error_count <= 5:
+                        print(f"Error screening {symbol}: {e}")
+                    elif error_count == 6:
+                        print(f"... and more errors (suppressed)")
 
-            except Exception as e:
-                print(f"Error screening {symbol}: {e}")
-                continue
+        elapsed = time.time() - start_time
+        print(f"Screening completed: {completed_count} coins in {elapsed:.1f}s ({len(results)} passed filters)")
+        if error_count > 0:
+            print(f"  Errors: {error_count} coins failed")
 
         # Sort by total score
         results = sorted(results, key=lambda x: x['total_score'], reverse=True)
@@ -99,9 +128,14 @@ class ScreeningService:
         btc_price: float,
         eth_price: float,
         min_volume: float,
-        min_price_change: float
+        min_price_change: float,
+        save_klines: bool = True
     ) -> Dict:
-        """Screen a single coin"""
+        """Screen a single coin
+
+        Args:
+            save_klines: Whether to save kline data to DB. Set False for parallel execution.
+        """
 
         # Fetch ticker for volume check
         ticker = self.binance.fetch_ticker(symbol)
@@ -131,8 +165,9 @@ class ScreeningService:
             print(f"跳过 {symbol}: 最新数据时间 {latest_timestamp}, 已超过1小时")
             return None
 
-        # Save K-line data to database
-        self._save_kline_data(df, symbol, timeframe)
+        # Save K-line data to database (skip during parallel execution)
+        if save_klines:
+            self._save_kline_data(df, symbol, timeframe)
 
         # Calculate technical indicators
         df = self.indicator_service.calculate_all_indicators(df)
@@ -205,26 +240,26 @@ class ScreeningService:
             'symbol': symbol,
             'timestamp': datetime.utcnow(),
             'timeframe': timeframe,
-            'current_price': current_price,
-            'price_btc_ratio': price_btc_ratio,
-            'price_eth_ratio': price_eth_ratio,
-            'btc_ratio_change_pct': btc_ratio_change,
-            'eth_ratio_change_pct': eth_ratio_change,
-            'beta_score': beta_score,
-            'volume_score': volume_score,
-            'technical_score': technical_score,
-            'total_score': total_score,
-            'above_sma': above_sma,
-            'macd_golden_cross': macd_golden_cross,
-            'above_all_ema': above_all_ema,
-            'volume_surge': volume_surge,
-            'price_anomaly': price_anomaly,
-            'price_change_5m': price_changes.get('5m', 0),
-            'price_change_15m': price_changes.get('15m', 0),
-            'price_change_1h': price_changes.get('1h', 0),
-            'price_change_4h': price_changes.get('4h', 0),
-            'volume_24h': volume_24h,
-            'volume_change_pct': ticker.get('percentage', 0),
+            'current_price': float(current_price),
+            'price_btc_ratio': float(price_btc_ratio),
+            'price_eth_ratio': float(price_eth_ratio),
+            'btc_ratio_change_pct': float(btc_ratio_change),
+            'eth_ratio_change_pct': float(eth_ratio_change),
+            'beta_score': float(beta_score),
+            'volume_score': float(volume_score),
+            'technical_score': float(technical_score),
+            'total_score': float(total_score),
+            'above_sma': bool(above_sma),
+            'macd_golden_cross': bool(macd_golden_cross),
+            'above_all_ema': bool(above_all_ema),
+            'volume_surge': bool(volume_surge),
+            'price_anomaly': bool(price_anomaly),
+            'price_change_5m': float(price_changes.get('5m', 0)),
+            'price_change_15m': float(price_changes.get('15m', 0)),
+            'price_change_1h': float(price_changes.get('1h', 0)),
+            'price_change_4h': float(price_changes.get('4h', 0)),
+            'volume_24h': float(volume_24h),
+            'volume_change_pct': float(ticker.get('percentage', 0) or 0),
         }
 
     def _prefilter_by_volume(self, symbols: List[str], min_volume: float) -> List[str]:
