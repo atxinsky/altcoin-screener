@@ -15,6 +15,7 @@ services:
       - ./logs:/app/logs
       - ./charts:/app/charts
       - ./.env:/app/.env
+      - //var/run/docker.sock:/var/run/docker.sock
     environment:
       - PYTHONUNBUFFERED=1
     networks:

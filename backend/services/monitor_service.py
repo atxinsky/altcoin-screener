@@ -23,20 +23,17 @@ class MonitorService:
         self.screening_interval = settings.UPDATE_INTERVAL  # seconds
         self.beijing_tz = pytz.timezone('Asia/Shanghai')
 
-        # 默认交易时间段（北京时间）
+        # 优选交易时间段（北京时间）- 这些时段会获得额外权重加成，但不强制限制
         # 格式: [(开始小时, 开始分钟, 结束小时, 结束分钟), ...]
         self.trading_windows = [
             (7, 30, 8, 30),    # 7:30-8:30
             (11, 30, 12, 30),  # 11:30-12:30
             (15, 30, 16, 30),  # 15:30-16:30
         ]
-        self.trading_windows_enabled = True  # 是否启用时间窗口限制
+        self.trading_window_bonus = 5.0  # 优选时段额外加分
 
     def is_in_trading_window(self) -> bool:
-        """检查当前北京时间是否在交易时间窗口内"""
-        if not self.trading_windows_enabled:
-            return True
-
+        """检查当前北京时间是否在优选交易时间窗口内（用于加分，不是限制）"""
         now = datetime.now(self.beijing_tz)
         current_minutes = now.hour * 60 + now.minute
 
@@ -48,6 +45,12 @@ class MonitorService:
                 return True
 
         return False
+
+    def get_time_window_bonus(self) -> float:
+        """获取当前时间窗口的加分值"""
+        if self.is_in_trading_window():
+            return self.trading_window_bonus
+        return 0.0
 
     def get_next_trading_window(self) -> Optional[str]:
         """获取下一个交易时间窗口"""
@@ -130,13 +133,13 @@ class MonitorService:
         beijing_now = datetime.now(self.beijing_tz)
         in_window = self.is_in_trading_window()
 
+        time_bonus = self.get_time_window_bonus()
         print(f"[{beijing_now.strftime('%Y-%m-%d %H:%M:%S')} 北京时间] Running screening job...")
-        if self.trading_windows_enabled:
-            if in_window:
-                print(f"  ✓ 当前在交易时间窗口内，将执行自动交易检查")
-            else:
-                next_window = self.get_next_trading_window()
-                print(f"  ✗ 当前不在交易时间窗口内，下一窗口: {next_window}")
+        if in_window:
+            print(f"  ★ 当前在优选时段内，额外加分: +{time_bonus}")
+        else:
+            next_window = self.get_next_trading_window()
+            print(f"  ○ 普通时段（下一优选时段: {next_window}）")
 
         with get_db() as db:
             screening_service = ScreeningService(db)
@@ -196,57 +199,52 @@ class MonitorService:
                 else:
                     print(f"  ✗ 跳过通知: {reason}")
 
-            # 自动模拟交易 - 只在交易时间窗口内执行
-            if in_window or not self.trading_windows_enabled:
-                try:
-                    # 获取所有启用了自动交易的模拟账户
-                    accounts = sim_trading_service.get_all_accounts()
-                    for account in accounts:
-                        if account.auto_trading_enabled:
-                            print(f"  执行自动交易检查: {account.account_name}")
-                            actions = sim_trading_service.auto_trade_monitor(account.id)
+            # 自动模拟交易 - 全天候执行，不再限制时间窗口
+            try:
+                accounts = sim_trading_service.get_all_accounts()
+                for account in accounts:
+                    if account.auto_trading_enabled:
+                        print(f"  Auto trading check: {account.account_name}")
+                        actions = sim_trading_service.auto_trade_monitor(
+                            account.id,
+                            time_window_bonus=time_bonus
+                        )
 
-                            if actions.get('positions_opened'):
-                                print(f"    ✓ 开仓 {len(actions['positions_opened'])} 个")
-                                for pos in actions['positions_opened']:
-                                    print(f"      - {pos['symbol']} @ {pos['price']:.6f} (分数: {pos['score']:.1f})")
+                        if actions.get('positions_opened'):
+                            print(f"    Opened {len(actions['positions_opened'])} positions")
+                            for pos in actions['positions_opened']:
+                                bonus_str = f" [+{time_bonus}bonus]" if time_bonus > 0 else ""
+                                print(f"      - {pos['symbol']} @ {pos['price']:.6f} (score: {pos['score']:.1f}{bonus_str})")
 
-                            if actions.get('positions_closed'):
-                                print(f"    ✓ 平仓 {len(actions['positions_closed'])} 个")
+                        if actions.get('positions_closed'):
+                            print(f"    Closed {len(actions['positions_closed'])} positions")
 
-                except Exception as e:
-                    print(f"  Auto trading error: {e}")
-                    import traceback
-                    traceback.print_exc()
+            except Exception as e:
+                print(f"  Auto trading error: {e}")
+                import traceback
+                traceback.print_exc()
 
         print(f"[{datetime.now(self.beijing_tz).strftime('%H:%M:%S')}] Screening job completed\n")
 
     def start_monitoring(self, timeframes: List[str] = None,
-                         trading_windows: List[tuple] = None,
-                         enable_time_windows: bool = True):
+                         trading_windows: List[tuple] = None):
         """
         Start continuous monitoring
 
         Args:
             timeframes: List of timeframes to screen
-            trading_windows: List of trading windows [(start_h, start_m, end_h, end_m), ...]
-            enable_time_windows: Whether to enable trading time window restriction
+            trading_windows: List of preferred trading windows [(start_h, start_m, end_h, end_m), ...]
         """
         self.is_running = True
 
-        # 设置交易时间窗口
         if trading_windows is not None:
             self.trading_windows = trading_windows
-        self.trading_windows_enabled = enable_time_windows
 
         print(f"Starting monitoring service (interval: {self.screening_interval}s)...")
-
-        if self.trading_windows_enabled:
-            print("交易时间窗口 (北京时间):")
-            for start_h, start_m, end_h, end_m in self.trading_windows:
-                print(f"  - {start_h:02d}:{start_m:02d} - {end_h:02d}:{end_m:02d}")
-        else:
-            print("交易时间窗口: 全天开放")
+        print("Trading mode: 24/7 (no time restriction)")
+        print(f"Preferred windows with +{self.trading_window_bonus} bonus (Beijing time):")
+        for start_h, start_m, end_h, end_m in self.trading_windows:
+            print(f"  - {start_h:02d}:{start_m:02d} - {end_h:02d}:{end_m:02d}")
 
         # Schedule periodic screening
         schedule.every(self.screening_interval).seconds.do(
@@ -272,14 +270,14 @@ if __name__ == "__main__":
     monitor = MonitorService()
 
     print("""
-    ╔═══════════════════════════════════════════════════════╗
-    ║     Binance Altcoin Screener - Monitor Service       ║
-    ║                                                       ║
-    ║  This service continuously monitors altcoins and      ║
-    ║  sends alerts when high-score opportunities arise.    ║
-    ║                                                       ║
-    ║  Press Ctrl+C to stop                                 ║
-    ╚═══════════════════════════════════════════════════════╝
+    ============================================================
+         Binance Altcoin Screener - Monitor Service
+
+      24/7 Trading Mode - No time window restrictions
+      Preferred windows get +5 bonus points
+
+      Press Ctrl+C to stop
+    ============================================================
     """)
 
     try:

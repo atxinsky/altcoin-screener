@@ -8,19 +8,22 @@ import {
   Save,
   RefreshCw,
   Moon,
-  Clock
+  Clock,
+  FileText
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Switch } from '@/components/ui/switch'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { cn } from '@/lib/utils'
 import {
   getNotificationSettings,
   updateNotificationSettings,
   testNotification
 } from '@/services/api'
+import LogsPanel from '@/components/LogsPanel'
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState(null)
@@ -109,12 +112,26 @@ export default function SettingsPage() {
           </span>
         </div>
         <h1 className="text-3xl font-bold mb-2">
-          NOTIFICATION <span className="text-primary">SETTINGS</span>
+          SYSTEM <span className="text-primary">SETTINGS</span>
         </h1>
         <p className="text-muted-foreground">
-          Configure how and when you receive trading alerts.
+          Configure notifications and view system logs.
         </p>
       </motion.div>
+
+      <Tabs defaultValue="notifications" className="space-y-6">
+        <TabsList className="grid w-full grid-cols-2 max-w-[400px]">
+          <TabsTrigger value="notifications" className="flex items-center gap-2">
+            <Bell className="w-4 h-4" />
+            Notifications
+          </TabsTrigger>
+          <TabsTrigger value="logs" className="flex items-center gap-2">
+            <FileText className="w-4 h-4" />
+            System Logs
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="notifications" className="space-y-6">
 
       {/* Notification Channels */}
       <Card>
@@ -339,6 +356,14 @@ export default function SettingsPage() {
           )}
         </Button>
       </div>
+
+        </TabsContent>
+
+        <TabsContent value="logs">
+          <LogsPanel />
+        </TabsContent>
+
+      </Tabs>
     </div>
   )
 }

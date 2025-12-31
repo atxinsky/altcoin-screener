@@ -251,4 +251,27 @@ export const getAccountLogs = async (accountId, limit = 100) => {
   return response.data
 }
 
+// System Logs endpoints
+export const getMonitorLogs = async (lines = 200, search = null) => {
+  const response = await api.get('/logs/monitor', {
+    params: { lines, search }
+  })
+  return response.data
+}
+
+export const getBackendLogs = async (lines = 200) => {
+  const response = await api.get('/logs/backend', {
+    params: { lines }
+  })
+  return response.data
+}
+
+export const exportLogs = async (service = 'monitor', lines = 500, format = 'txt') => {
+  const response = await api.get('/logs/export', {
+    params: { service, lines, format },
+    responseType: 'blob'
+  })
+  return response.data
+}
+
 export default api

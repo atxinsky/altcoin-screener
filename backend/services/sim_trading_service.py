@@ -413,55 +413,61 @@ class SimTradingService:
     def evaluate_screening_result(
         self,
         account: SimAccount,
-        screening_result: Dict
+        screening_result: Dict,
+        time_window_bonus: float = 0.0
     ) -> Tuple[bool, str]:
         """
         Evaluate if a screening result meets entry criteria
+        简化版：高分或爆量突破即可入场
+
+        Args:
+            account: 模拟账户
+            screening_result: 筛选结果
+            time_window_bonus: 优选时段加分
 
         Returns:
             (should_enter, reason)
         """
-        # Get strategy config with defaults
-        strategy_config = account.strategy_config or {}
-        require_macd = strategy_config.get('require_macd_golden', True)
-        require_volume_surge = strategy_config.get('require_volume_surge', False)
+        # 计算调整后的分数（加上时间窗口加成）
+        adjusted_score = screening_result['total_score'] + time_window_bonus
+        volume_surge = screening_result.get('volume_surge', False)
 
-        # Check total score
-        if screening_result['total_score'] < account.entry_score_min:
-            return False, f"Total score too low: {screening_result['total_score']:.1f} < {account.entry_score_min}"
+        # 入场条件（满足任一即可）:
+        # 1. 调整后分数 >= 账户设定的最低分数
+        # 2. 爆量突破（volume_surge=True）且分数 >= 60
 
-        # Check technical score
-        if screening_result['technical_score'] < account.entry_technical_min:
-            return False, f"Technical score too low: {screening_result['technical_score']:.1f} < {account.entry_technical_min}"
+        high_score = adjusted_score >= account.entry_score_min
+        volume_breakout = volume_surge and screening_result['total_score'] >= 60
 
-        # Check MACD golden cross if required
-        if require_macd and not screening_result.get('macd_golden_cross', False):
-            return False, "Missing MACD golden cross signal"
+        if not high_score and not volume_breakout:
+            if time_window_bonus > 0:
+                return False, f"Score {screening_result['total_score']:.1f}+{time_window_bonus}={adjusted_score:.1f} < {account.entry_score_min}, no volume surge"
+            else:
+                return False, f"Score {screening_result['total_score']:.1f} < {account.entry_score_min}, no volume surge"
 
-        # Check price above all EMA
-        if not screening_result.get('above_all_ema', False):
-            return False, "Price not above all EMAs"
-
-        # Check volume surge if required
-        if require_volume_surge and not screening_result.get('volume_surge', False):
-            return False, "Missing volume surge signal"
-
-        # Check volume score minimum
-        if screening_result.get('volume_score', 0) < 40:
-            return False, f"Volume score too low: {screening_result.get('volume_score', 0)}"
-
-        # Build detailed success reason
+        # 构建入场原因
         signals = []
-        if screening_result.get('macd_golden_cross'): signals.append('MACD金叉')
-        if screening_result.get('above_all_ema'): signals.append('价格>EMA')
-        if screening_result.get('volume_surge'): signals.append('量能激增')
-        if screening_result.get('above_sma'): signals.append('价格>SMA')
+        if high_score:
+            if time_window_bonus > 0:
+                signals.append(f"高分{screening_result['total_score']:.1f}+{time_window_bonus}")
+            else:
+                signals.append(f"高分{adjusted_score:.1f}")
+        if volume_surge:
+            signals.append('爆量突破')
+        if screening_result.get('macd_golden_cross'):
+            signals.append('MACD金叉')
+        if screening_result.get('above_all_ema'):
+            signals.append('EMA多头')
 
-        return True, f"Entry criteria met: {', '.join(signals)}"
+        return True, f"Entry: {', '.join(signals)}"
 
-    def auto_trade_monitor(self, account_id: int) -> Dict:
+    def auto_trade_monitor(self, account_id: int, time_window_bonus: float = 0.0) -> Dict:
         """
         Monitor screening results and auto-open positions
+
+        Args:
+            account_id: 账户ID
+            time_window_bonus: 优选时段加分
 
         Returns:
             Summary of actions taken
@@ -553,8 +559,8 @@ class SimTradingService:
                 'quantity': (account.total_equity * (account.position_size_pct / 100)) / result.current_price if result.current_price else 0,
             }
 
-            # Evaluate entry criteria
-            should_enter, reason = self.evaluate_screening_result(account, result_dict)
+            # Evaluate entry criteria (with time window bonus)
+            should_enter, reason = self.evaluate_screening_result(account, result_dict, time_window_bonus)
 
             if not should_enter:
                 actions['positions_skipped'].append({

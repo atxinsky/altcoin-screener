@@ -1468,3 +1468,143 @@ async def test_notification(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== Monitor Logs ====================
+
+def get_docker_client():
+    """Get Docker client with error handling"""
+    try:
+        import docker
+        return docker.from_env()
+    except Exception as e:
+        return None
+
+
+def get_container_logs(container_name: str, lines: int) -> str:
+    """Get logs from a Docker container using Docker SDK"""
+    client = get_docker_client()
+    if not client:
+        raise HTTPException(status_code=500, detail="Docker not available")
+
+    try:
+        container = client.containers.get(container_name)
+        logs = container.logs(tail=lines, timestamps=False).decode('utf-8', errors='replace')
+        return logs
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get logs: {str(e)}")
+
+
+@router.get("/logs/monitor")
+async def get_monitor_logs(
+    lines: int = Query(default=200, le=2000, description="Number of lines to return"),
+    search: Optional[str] = Query(default=None, description="Search keyword")
+):
+    """
+    Get monitor service logs
+
+    - **lines**: Number of recent lines to return (default 200, max 2000)
+    - **search**: Optional search keyword to filter logs
+    """
+    try:
+        log_lines = get_container_logs('ledger-monitor', lines)
+
+        # Filter by search keyword
+        if search:
+            filtered_lines = []
+            for line in log_lines.split('\n'):
+                if search.lower() in line.lower():
+                    filtered_lines.append(line)
+            log_lines = '\n'.join(filtered_lines)
+
+        return {
+            "success": True,
+            "lines": len(log_lines.split('\n')),
+            "logs": log_lines
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/logs/backend")
+async def get_backend_logs(
+    lines: int = Query(default=200, le=2000, description="Number of lines to return")
+):
+    """Get backend service logs"""
+    try:
+        log_lines = get_container_logs('ledger-backend', lines)
+
+        return {
+            "success": True,
+            "lines": len(log_lines.split('\n')),
+            "logs": log_lines
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/logs/export")
+async def export_logs(
+    service: str = Query(default="monitor", description="Service name: monitor or backend"),
+    lines: int = Query(default=500, le=5000),
+    format: str = Query(default="txt", description="Export format: txt or md")
+):
+    """
+    Export logs as downloadable file
+
+    - **service**: monitor or backend
+    - **lines**: Number of lines to export
+    - **format**: txt or md
+    """
+    from fastapi.responses import PlainTextResponse
+    from datetime import datetime
+
+    try:
+        container_name = f"ledger-{service}"
+        log_content = get_container_logs(container_name, lines)
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+        if format == 'md':
+            # Markdown format
+            content = f"""# {service.capitalize()} Service Logs
+
+**Exported at:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+**Lines:** {lines}
+
+---
+
+```
+{log_content}
+```
+"""
+            filename = f"{service}_logs_{timestamp}.md"
+            media_type = "text/markdown"
+        else:
+            # Plain text format
+            content = f"""=== {service.capitalize()} Service Logs ===
+Exported at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+Lines: {lines}
+{'=' * 50}
+
+{log_content}
+"""
+            filename = f"{service}_logs_{timestamp}.txt"
+            media_type = "text/plain"
+
+        return PlainTextResponse(
+            content=content,
+            media_type=media_type,
+            headers={
+                "Content-Disposition": f"attachment; filename={filename}"
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
