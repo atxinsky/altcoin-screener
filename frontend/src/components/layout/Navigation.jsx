@@ -6,7 +6,8 @@ import {
   TrendingUp,
   Settings,
   BarChart3,
-  Wallet
+  Wallet,
+  Github
 } from 'lucide-react'
 
 const navItems = [
@@ -54,12 +55,21 @@ export default function Navigation() {
             })}
           </div>
 
-          {/* Right side - Status indicator */}
+          {/* Right side - Status indicator & GitHub */}
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 bg-[#6Ec85c] rounded-full animate-pulse"></div>
               <span className="text-xs font-mono text-muted-foreground">LIVE</span>
             </div>
+            <a
+              href="https://github.com/atxinsky/altcoin-screener-V2"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-muted-foreground hover:text-foreground transition-colors"
+              title="View on GitHub"
+            >
+              <Github className="w-5 h-5" />
+            </a>
           </div>
         </div>
       </div>
