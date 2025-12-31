@@ -510,3 +510,66 @@ class ScreeningService:
             'price_change_1h': result.price_change_1h,
             'price_change_4h': result.price_change_4h,
         }
+
+    def cleanup_old_data(
+        self,
+        kline_days_short: int = 3,
+        kline_days_long: int = 30,
+        screening_days: int = 7
+    ) -> Dict[str, int]:
+        """
+        Clean up old data to prevent database bloat
+
+        Args:
+            kline_days_short: Days to keep for 5m/15m klines (default: 3)
+            kline_days_long: Days to keep for 1h/4h/1d klines (default: 30)
+            screening_days: Days to keep for screening results (default: 7)
+
+        Returns:
+            Dict with counts of deleted records
+        """
+        from datetime import timedelta
+
+        deleted = {
+            'klines_short': 0,
+            'klines_long': 0,
+            'screening_results': 0,
+        }
+
+        try:
+            now = datetime.utcnow()
+
+            # 清理短周期K线数据 (5m, 15m) - 保留3天
+            short_cutoff = now - timedelta(days=kline_days_short)
+            deleted['klines_short'] = self.db.query(KlineData).filter(
+                KlineData.timeframe.in_(['5m', '15m']),
+                KlineData.timestamp < short_cutoff
+            ).delete(synchronize_session='fetch')
+
+            # 清理长周期K线数据 (1h, 4h, 1d) - 保留30天
+            long_cutoff = now - timedelta(days=kline_days_long)
+            deleted['klines_long'] = self.db.query(KlineData).filter(
+                KlineData.timeframe.in_(['1h', '4h', '1d']),
+                KlineData.timestamp < long_cutoff
+            ).delete(synchronize_session='fetch')
+
+            # 清理筛选结果 - 保留7天
+            screening_cutoff = now - timedelta(days=screening_days)
+            deleted['screening_results'] = self.db.query(ScreeningResult).filter(
+                ScreeningResult.timestamp < screening_cutoff
+            ).delete(synchronize_session='fetch')
+
+            self.db.commit()
+
+            total_deleted = sum(deleted.values())
+            if total_deleted > 0:
+                print(f"Data cleanup: Deleted {deleted['klines_short']} short klines, "
+                      f"{deleted['klines_long']} long klines, "
+                      f"{deleted['screening_results']} screening results")
+
+            return deleted
+
+        except Exception as e:
+            print(f"Error during data cleanup: {e}")
+            self.db.rollback()
+            return deleted

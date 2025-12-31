@@ -251,6 +251,10 @@ class MonitorService:
             lambda: asyncio.run(self.run_screening_job(timeframes))
         )
 
+        # Schedule data cleanup every 10 days
+        schedule.every(10).days.do(self._run_cleanup)
+        print("Data cleanup scheduled: every 10 days")
+
         # Run initial screening immediately
         asyncio.run(self.run_screening_job(timeframes))
 
@@ -258,6 +262,27 @@ class MonitorService:
         while self.is_running:
             schedule.run_pending()
             time.sleep(1)
+
+    def _run_cleanup(self):
+        """Run data cleanup task"""
+        try:
+            from backend.database.session import get_db_session
+            from backend.services.screening_service import ScreeningService
+
+            db = next(get_db_session())
+            screening_service = ScreeningService(db)
+            deleted = screening_service.cleanup_old_data(
+                kline_days_short=3,   # Keep 5m/15m klines for 3 days
+                kline_days_long=30,   # Keep 1h/4h/1d klines for 30 days
+                screening_days=7      # Keep screening results for 7 days
+            )
+            db.close()
+
+            total = sum(deleted.values())
+            if total > 0:
+                print(f"[Scheduled Cleanup] Cleaned {total} old records")
+        except Exception as e:
+            print(f"[Scheduled Cleanup] Error: {e}")
 
     def stop_monitoring(self):
         """Stop monitoring"""

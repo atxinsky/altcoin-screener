@@ -352,6 +352,38 @@ async def get_stats(db: Session = Depends(get_db_session)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/cleanup")
+async def cleanup_old_data(
+    kline_days_short: int = Query(3, ge=1, le=30, description="Days to keep 5m/15m klines"),
+    kline_days_long: int = Query(30, ge=7, le=90, description="Days to keep 1h/4h/1d klines"),
+    screening_days: int = Query(7, ge=1, le=30, description="Days to keep screening results"),
+    db: Session = Depends(get_db_session)
+):
+    """
+    Clean up old data to prevent database bloat
+
+    - 5m/15m klines: Keep last N days (default: 3)
+    - 1h/4h/1d klines: Keep last N days (default: 30)
+    - Screening results: Keep last N days (default: 7)
+    """
+    try:
+        screening_service = ScreeningService(db)
+        deleted = screening_service.cleanup_old_data(
+            kline_days_short=kline_days_short,
+            kline_days_long=kline_days_long,
+            screening_days=screening_days
+        )
+
+        return {
+            "success": True,
+            "deleted": deleted,
+            "total_deleted": sum(deleted.values())
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ==================== Historical Rankings ====================
 
 @router.get("/history/rankings")
