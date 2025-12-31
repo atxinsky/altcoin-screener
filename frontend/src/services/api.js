@@ -203,8 +203,9 @@ export const deleteSimTradingAccount = async (accountId) => {
 }
 
 export const toggleAutoTrading = async (accountId, enabled) => {
-  const response = await api.post(`/sim-trading/accounts/${accountId}/auto-trade`, {
-    enabled
+  // Use PATCH to update account settings (not POST which triggers auto-trade)
+  const response = await api.patch(`/sim-trading/accounts/${accountId}`, {
+    auto_trading_enabled: enabled
   })
   return response.data
 }
