@@ -354,8 +354,8 @@ async def get_stats(db: Session = Depends(get_db_session)):
 
 @router.post("/cleanup")
 async def cleanup_old_data(
-    kline_days_short: int = Query(3, ge=1, le=30, description="Days to keep 5m/15m klines"),
-    kline_days_long: int = Query(30, ge=7, le=90, description="Days to keep 1h/4h/1d klines"),
+    kline_days_short: int = Query(7, ge=1, le=30, description="Days to keep 5m/15m klines"),
+    kline_days_long: int = Query(90, ge=7, le=180, description="Days to keep 1h/4h/1d klines"),
     screening_days: int = Query(7, ge=1, le=30, description="Days to keep screening results"),
     db: Session = Depends(get_db_session)
 ):

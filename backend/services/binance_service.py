@@ -12,8 +12,15 @@ _market_cache = {
     'btc_ticker': None,
     'eth_ticker': None,
     'last_update': 0,
+    'symbols': None,
+    'symbols_update': 0,
+    'tickers': None,
+    'tickers_update': 0,
 }
-_CACHE_TTL = 30  # Cache TTL in seconds
+_CACHE_TTL = 30  # Cache TTL in seconds for prices
+_SYMBOLS_CACHE_TTL = 300  # Cache symbols for 5 minutes
+_TICKERS_CACHE_TTL = 60  # Cache tickers for 1 minute
+_API_DELAY = 0.1  # Delay between API calls in seconds
 
 
 class BinanceService:
@@ -69,8 +76,17 @@ class BinanceService:
         return None
 
     def get_all_spot_symbols(self) -> List[str]:
-        """Get all ACTIVE spot trading symbols from Binance"""
+        """Get all ACTIVE spot trading symbols from Binance (with caching)"""
+        global _market_cache
+        
+        current_time = time.time()
+        
+        # Return cached symbols if valid
+        if _market_cache['symbols'] and (current_time - _market_cache['symbols_update']) < _SYMBOLS_CACHE_TTL:
+            return _market_cache['symbols']
+        
         try:
+            time.sleep(_API_DELAY)  # Rate limiting delay
             markets = self.public_exchange.load_markets()
             # Filter for USDT spot pairs that are ACTIVE, exclude leveraged tokens
             symbols = [
@@ -80,10 +96,17 @@ class BinanceService:
                 and market.get('active', False)  # 只返回活跃的交易对
                 and not any(x in symbol for x in ['UP/', 'DOWN/', 'BEAR/', 'BULL/'])
             ]
-            print(f"获取到 {len(symbols)} 个活跃的USDT现货交易对")
+            # Update cache
+            _market_cache['symbols'] = symbols
+            _market_cache['symbols_update'] = current_time
+            print(f"获取到 {len(symbols)} 个活跃的USDT现货交易对 (已缓存)")
             return symbols
         except Exception as e:
             print(f"Error fetching symbols: {e}")
+            # Return cached data if available, even if expired
+            if _market_cache['symbols']:
+                print(f"Using cached symbols ({len(_market_cache['symbols'])} symbols)")
+                return _market_cache['symbols']
             return []
 
     def get_altcoins(self) -> List[str]:
@@ -117,6 +140,7 @@ class BinanceService:
             DataFrame with OHLCV data
         """
         try:
+            time.sleep(_API_DELAY)  # Rate limiting delay
             # 使用公开客户端获取K线数据（不需要API密钥）
             ohlcv = self.public_exchange.fetch_ohlcv(symbol, timeframe, since, limit)
             df = pd.DataFrame(
@@ -145,13 +169,29 @@ class BinanceService:
             return {}
 
     def fetch_24h_tickers(self) -> Dict[str, Dict]:
-        """Fetch 24h ticker data for all symbols"""
+        """Fetch 24h ticker data for all symbols (with caching)"""
+        global _market_cache
+        
+        current_time = time.time()
+        
+        # Return cached tickers if valid
+        if _market_cache['tickers'] and (current_time - _market_cache['tickers_update']) < _TICKERS_CACHE_TTL:
+            return _market_cache['tickers']
+        
         try:
+            time.sleep(_API_DELAY)  # Rate limiting delay
             # 使用公开客户端获取所有ticker数据
             tickers = self.public_exchange.fetch_tickers()
+            # Update cache
+            _market_cache['tickers'] = tickers
+            _market_cache['tickers_update'] = current_time
             return tickers
         except Exception as e:
             print(f"Error fetching 24h tickers: {e}")
+            # Return cached data if available
+            if _market_cache['tickers']:
+                print("Using cached tickers")
+                return _market_cache['tickers']
             return {}
 
     def get_historical_data(

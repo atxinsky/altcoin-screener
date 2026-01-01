@@ -15,7 +15,7 @@ from backend.utils.logger import get_screening_logger
 logger = get_screening_logger()
 
 # 并行处理配置
-MAX_WORKERS = 10  # 并行线程数
+MAX_WORKERS = 5  # 并行线程数（降低以避免API限制）
 SCREENING_TIMEOUT = 120  # 筛选超时时间（秒）
 
 
@@ -517,16 +517,16 @@ class ScreeningService:
 
     def cleanup_old_data(
         self,
-        kline_days_short: int = 3,
-        kline_days_long: int = 30,
+        kline_days_short: int = 7,
+        kline_days_long: int = 90,
         screening_days: int = 7
     ) -> Dict[str, int]:
         """
         Clean up old data to prevent database bloat
 
         Args:
-            kline_days_short: Days to keep for 5m/15m klines (default: 3)
-            kline_days_long: Days to keep for 1h/4h/1d klines (default: 30)
+            kline_days_short: Days to keep for 5m/15m klines (default: 7)
+            kline_days_long: Days to keep for 1h/4h/1d klines (default: 90)
             screening_days: Days to keep for screening results (default: 7)
 
         Returns:

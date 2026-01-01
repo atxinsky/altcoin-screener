@@ -272,8 +272,8 @@ class MonitorService:
             db = next(get_db_session())
             screening_service = ScreeningService(db)
             deleted = screening_service.cleanup_old_data(
-                kline_days_short=3,   # Keep 5m/15m klines for 3 days
-                kline_days_long=30,   # Keep 1h/4h/1d klines for 30 days
+                kline_days_short=7,   # Keep 5m/15m klines for 7 days
+                kline_days_long=90,   # Keep 1h/4h/1d klines for 90 days
                 screening_days=7      # Keep screening results for 7 days
             )
             db.close()
