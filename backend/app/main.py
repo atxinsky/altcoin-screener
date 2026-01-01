@@ -54,6 +54,15 @@ async def startup_event():
         print(f"Warning: TimescaleDB initialization failed: {e}")
         print("K-line storage will not be available")
 
+    # Start background K-line collector
+    try:
+        from backend.services.kline_collector import start_background_collector
+        print("Starting background K-line collector...")
+        start_background_collector()
+        print("Background K-line collector started")
+    except Exception as e:
+        print(f"Warning: K-line collector failed to start: {e}")
+
 
 @app.get("/")
 async def root():

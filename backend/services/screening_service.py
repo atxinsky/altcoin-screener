@@ -517,7 +517,7 @@ class ScreeningService:
 
     def cleanup_old_data(
         self,
-        kline_days_short: int = 7,
+        kline_days_short: int = 15,
         kline_days_long: int = 90,
         screening_days: int = 7
     ) -> Dict[str, int]:
@@ -525,7 +525,7 @@ class ScreeningService:
         Clean up old data to prevent database bloat
 
         Args:
-            kline_days_short: Days to keep for 5m/15m klines (default: 7)
+            kline_days_short: Days to keep for 5m/15m klines (default: 15)
             kline_days_long: Days to keep for 1h/4h/1d klines (default: 90)
             screening_days: Days to keep for screening results (default: 7)
 

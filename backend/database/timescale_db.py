@@ -217,7 +217,7 @@ def get_kline_stats() -> Dict[str, Any]:
         return {}
 
 
-def cleanup_old_klines(days_to_keep: int = 30) -> int:
+def cleanup_old_klines(days_to_keep: int = 15) -> int:
     """Clean up old K-line data"""
     with get_ts_db() as db:
         cutoff = datetime.utcnow() - timedelta(days=days_to_keep)

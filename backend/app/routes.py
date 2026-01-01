@@ -354,7 +354,7 @@ async def get_stats(db: Session = Depends(get_db_session)):
 
 @router.post("/cleanup")
 async def cleanup_old_data(
-    kline_days_short: int = Query(7, ge=1, le=30, description="Days to keep 5m/15m klines"),
+    kline_days_short: int = Query(15, ge=1, le=30, description="Days to keep 5m/15m klines"),
     kline_days_long: int = Query(90, ge=7, le=180, description="Days to keep 1h/4h/1d klines"),
     screening_days: int = Query(7, ge=1, le=30, description="Days to keep screening results"),
     db: Session = Depends(get_db_session)
@@ -380,6 +380,98 @@ async def cleanup_old_data(
             "total_deleted": sum(deleted.values())
         }
 
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== K-line Collection ====================
+
+@router.get("/klines/stats")
+async def get_kline_stats():
+    """Get K-line collection statistics"""
+    try:
+        from backend.services.kline_collector import get_kline_collector
+        from backend.database.timescale_db import get_kline_stats as get_db_stats
+
+        collector = get_kline_collector()
+        collector_stats = collector.get_stats()
+        db_stats = get_db_stats()
+
+        return {
+            "success": True,
+            "collector": collector_stats,
+            "database": db_stats
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/klines/refresh")
+async def manual_refresh_klines(
+    symbols: List[str] = Query(default=["BTC/USDT", "ETH/USDT"], description="Symbols to refresh")
+):
+    """
+    Manually refresh K-line data for specific symbols.
+    Use this when you need the latest real-time data.
+    """
+    try:
+        from backend.services.kline_collector import get_kline_collector
+
+        collector = get_kline_collector()
+        result = collector.force_refresh_symbols(symbols)
+
+        return {
+            "success": True,
+            "result": result
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/screening/refresh")
+async def refresh_and_screen(
+    timeframe: str = Query("15m", description="Timeframe to screen"),
+    db: Session = Depends(get_db_session)
+):
+    """
+    Force refresh top coins and run screening.
+    Call this for manual refresh with real-time data.
+    """
+    try:
+        from backend.services.kline_collector import get_kline_collector
+        from backend.services.binance_service import BinanceService
+
+        # First, refresh top 50 coins
+        collector = get_kline_collector()
+        binance = BinanceService()
+
+        # Get top 50 by volume
+        tickers = binance.fetch_24h_tickers()
+        usdt_tickers = [
+            (symbol, data)
+            for symbol, data in tickers.items()
+            if symbol.endswith('/USDT')
+            and not any(x in symbol for x in ['UP/', 'DOWN/', 'BEAR/', 'BULL/'])
+        ]
+        usdt_tickers.sort(key=lambda x: x[1].get('quoteVolume', 0) or 0, reverse=True)
+        top_symbols = [t[0] for t in usdt_tickers[:50]]
+
+        # Refresh K-lines
+        refresh_result = collector.force_refresh_symbols(top_symbols)
+
+        # Run screening
+        screening_service = ScreeningService(db)
+        screening_results = screening_service.screen_altcoins(timeframe=timeframe)
+
+        return {
+            "success": True,
+            "refresh": refresh_result,
+            "screening": {
+                "timeframe": timeframe,
+                "results_count": len(screening_results),
+                "results": screening_results[:20]  # Top 20
+            }
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

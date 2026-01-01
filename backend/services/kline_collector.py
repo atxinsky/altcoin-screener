@@ -1,32 +1,43 @@
 """
 K-line Collector Service
-只采集 5 分钟 K 线数据，其他周期通过数据库聚合生成
+后台持续采集 5 分钟 K 线数据，遵守 Binance API 限制
 """
 
 import time
 import logging
-from typing import List, Optional
+import threading
+from typing import List, Optional, Set
 from datetime import datetime, timedelta
 
 from backend.services.binance_service import BinanceService
-from backend.database.timescale_db import save_klines, get_latest_kline_time, get_symbols_with_data
+from backend.database.timescale_db import save_klines, get_latest_kline_time
 
 logger = logging.getLogger(__name__)
 
-# Collection settings
-BATCH_SIZE = 50  # Number of symbols to process per batch
-BATCH_DELAY = 2  # Seconds to wait between batches
-API_DELAY = 0.2  # Seconds to wait between API calls
-MAX_CANDLES_PER_REQUEST = 500  # Binance limit
+# Binance API 限制配置
+# Weight limit: 1200/min, 每个 klines 请求约 1-2 weight
+API_DELAY_BETWEEN_SYMBOLS = 0.5  # 每个币之间延迟 0.5 秒
+API_DELAY_BETWEEN_BATCHES = 5    # 每批次之间延迟 5 秒
+BATCH_SIZE = 20                   # 每批次处理 20 个币
+MAX_CANDLES_PER_REQUEST = 500     # 每次请求最多 500 根 K 线
+COLLECTION_CYCLE_DELAY = 60       # 完成一轮后等待 60 秒再开始下一轮
 
 
 class KlineCollector:
-    """Collector for 5m K-line data"""
+    """后台持续采集 5m K 线数据"""
 
     def __init__(self):
         self.binance = BinanceService()
-        self._last_collection_time = 0
-        self._collection_interval = 300  # 5 minutes
+        self._is_running = False
+        self._thread = None
+        self._collected_symbols: Set[str] = set()
+        self._last_full_cycle = 0
+        self._stats = {
+            'total_saved': 0,
+            'errors': 0,
+            'last_update': None,
+            'symbols_collected': 0
+        }
 
     def collect_symbol_klines(
         self,
@@ -34,34 +45,20 @@ class KlineCollector:
         since: Optional[datetime] = None,
         limit: int = MAX_CANDLES_PER_REQUEST
     ) -> int:
-        """
-        Collect 5m K-lines for a single symbol
-
-        Args:
-            symbol: Trading pair symbol
-            since: Start time (optional, defaults to last stored time)
-            limit: Max candles to fetch
-
-        Returns:
-            Number of K-lines saved
-        """
+        """采集单个币的 5m K 线"""
         try:
-            # Get last stored time for incremental update
+            # 获取增量更新的起始时间
             if since is None:
                 last_time = get_latest_kline_time(symbol, '5m')
                 if last_time:
-                    # Start from last stored time
                     since = last_time
                 else:
-                    # First collection: get last 24 hours
+                    # 首次采集：获取最近 24 小时
                     since = datetime.utcnow() - timedelta(hours=24)
 
-            # Convert to milliseconds for Binance API
             since_ms = int(since.timestamp() * 1000)
 
-            time.sleep(API_DELAY)  # Rate limiting
-
-            # Fetch from Binance
+            # 调用 API
             ohlcv = self.binance.public_exchange.fetch_ohlcv(
                 symbol, '5m', since_ms, limit
             )
@@ -69,131 +66,169 @@ class KlineCollector:
             if not ohlcv:
                 return 0
 
-            # Save to TimescaleDB
+            # 保存到 TimescaleDB
             saved = save_klines(symbol, '5m', ohlcv)
+            self._stats['total_saved'] += saved
             return saved
 
         except Exception as e:
-            logger.error(f"Error collecting klines for {symbol}: {e}")
+            if '418' in str(e) or 'banned' in str(e).lower():
+                logger.warning(f"API rate limited, will retry later: {e}")
+                time.sleep(60)  # 被封禁时等待 1 分钟
+            else:
+                logger.error(f"Error collecting klines for {symbol}: {e}")
+            self._stats['errors'] += 1
             return 0
 
-    def collect_all_symbols(
-        self,
-        symbols: Optional[List[str]] = None,
-        initial_load: bool = False
-    ) -> dict:
-        """
-        Collect 5m K-lines for multiple symbols
+    def _collection_loop(self):
+        """后台采集循环"""
+        logger.info("K-line collector background loop started")
 
-        Args:
-            symbols: List of symbols (optional, defaults to all altcoins)
-            initial_load: If True, load more historical data
+        while self._is_running:
+            try:
+                # 获取所有交易对
+                symbols = self.binance.get_all_spot_symbols()
+                if not symbols:
+                    logger.warning("No symbols fetched, waiting...")
+                    time.sleep(30)
+                    continue
 
-        Returns:
-            Collection statistics
-        """
-        if symbols is None:
-            symbols = self.binance.get_altcoins()
-            # Also include BTC and ETH
-            symbols = ['BTC/USDT', 'ETH/USDT'] + symbols
+                # 确保 BTC 和 ETH 优先
+                priority_symbols = ['BTC/USDT', 'ETH/USDT']
+                other_symbols = [s for s in symbols if s not in priority_symbols]
+                all_symbols = priority_symbols + other_symbols
 
-        total_symbols = len(symbols)
+                logger.info(f"Starting collection cycle for {len(all_symbols)} symbols")
+                cycle_saved = 0
+                cycle_start = time.time()
+
+                # 分批处理
+                for i in range(0, len(all_symbols), BATCH_SIZE):
+                    if not self._is_running:
+                        break
+
+                    batch = all_symbols[i:i + BATCH_SIZE]
+                    batch_saved = 0
+
+                    for symbol in batch:
+                        if not self._is_running:
+                            break
+
+                        saved = self.collect_symbol_klines(symbol)
+                        batch_saved += saved
+                        self._collected_symbols.add(symbol)
+
+                        # 币之间延迟
+                        time.sleep(API_DELAY_BETWEEN_SYMBOLS)
+
+                    cycle_saved += batch_saved
+                    batch_num = i // BATCH_SIZE + 1
+                    total_batches = (len(all_symbols) + BATCH_SIZE - 1) // BATCH_SIZE
+
+                    logger.info(
+                        f"Batch {batch_num}/{total_batches}: "
+                        f"saved {batch_saved} candles"
+                    )
+
+                    # 批次之间延迟
+                    if i + BATCH_SIZE < len(all_symbols):
+                        time.sleep(API_DELAY_BETWEEN_BATCHES)
+
+                # 更新统计
+                cycle_time = time.time() - cycle_start
+                self._stats['symbols_collected'] = len(self._collected_symbols)
+                self._stats['last_update'] = datetime.utcnow().isoformat()
+                self._last_full_cycle = time.time()
+
+                logger.info(
+                    f"Collection cycle completed: {cycle_saved} candles "
+                    f"from {len(all_symbols)} symbols in {cycle_time:.1f}s"
+                )
+
+                # 等待下一个周期
+                time.sleep(COLLECTION_CYCLE_DELAY)
+
+            except Exception as e:
+                logger.error(f"Error in collection loop: {e}")
+                time.sleep(30)
+
+        logger.info("K-line collector background loop stopped")
+
+    def start(self):
+        """启动后台采集"""
+        if self._is_running:
+            return
+
+        self._is_running = True
+        self._thread = threading.Thread(target=self._collection_loop, daemon=True)
+        self._thread.start()
+        logger.info("K-line collector started")
+
+    def stop(self):
+        """停止后台采集"""
+        self._is_running = False
+        if self._thread:
+            self._thread.join(timeout=5)
+        logger.info("K-line collector stopped")
+
+    def get_stats(self) -> dict:
+        """获取采集统计"""
+        return {
+            **self._stats,
+            'is_running': self._is_running,
+            'collected_symbols': len(self._collected_symbols)
+        }
+
+    def force_refresh_symbol(self, symbol: str) -> int:
+        """强制刷新单个币的 K 线（手动刷新用）"""
+        # 获取最近 2 小时的数据
+        since = datetime.utcnow() - timedelta(hours=2)
+        return self.collect_symbol_klines(symbol, since=since)
+
+    def force_refresh_symbols(self, symbols: List[str]) -> dict:
+        """强制刷新多个币的 K 线（手动刷新用）"""
         total_saved = 0
         errors = 0
 
-        logger.info(f"Starting K-line collection for {total_symbols} symbols...")
+        for symbol in symbols:
+            try:
+                saved = self.force_refresh_symbol(symbol)
+                total_saved += saved
+                time.sleep(0.2)  # 小延迟
+            except Exception as e:
+                logger.error(f"Error refreshing {symbol}: {e}")
+                errors += 1
 
-        # Process in batches
-        for i in range(0, total_symbols, BATCH_SIZE):
-            batch = symbols[i:i + BATCH_SIZE]
-            batch_saved = 0
-
-            for symbol in batch:
-                try:
-                    if initial_load:
-                        # Load 7 days of historical data for initial load
-                        since = datetime.utcnow() - timedelta(days=7)
-                        saved = self.collect_symbol_klines(symbol, since=since)
-                    else:
-                        # Incremental update
-                        saved = self.collect_symbol_klines(symbol)
-
-                    batch_saved += saved
-                    total_saved += saved
-
-                except Exception as e:
-                    logger.error(f"Error processing {symbol}: {e}")
-                    errors += 1
-
-            logger.info(
-                f"Batch {i // BATCH_SIZE + 1}/{(total_symbols + BATCH_SIZE - 1) // BATCH_SIZE}: "
-                f"Saved {batch_saved} K-lines"
-            )
-
-            # Delay between batches
-            if i + BATCH_SIZE < total_symbols:
-                time.sleep(BATCH_DELAY)
-
-        self._last_collection_time = time.time()
-
-        result = {
-            'symbols': total_symbols,
+        return {
+            'symbols': len(symbols),
             'saved': total_saved,
-            'errors': errors,
-            'timestamp': datetime.utcnow().isoformat()
+            'errors': errors
         }
 
-        logger.info(f"K-line collection completed: {result}")
-        return result
 
-    def collect_top_symbols(self, top_n: int = 100) -> dict:
-        """
-        Collect K-lines for top N symbols by volume
-        This is a lighter collection for frequent updates
-        """
-        try:
-            # Get all tickers to sort by volume
-            tickers = self.binance.fetch_24h_tickers()
-
-            # Filter USDT pairs and sort by volume
-            usdt_tickers = [
-                (symbol, data)
-                for symbol, data in tickers.items()
-                if symbol.endswith('/USDT')
-                and not any(x in symbol for x in ['UP/', 'DOWN/', 'BEAR/', 'BULL/'])
-            ]
-
-            # Sort by quote volume and take top N
-            usdt_tickers.sort(
-                key=lambda x: x[1].get('quoteVolume', 0) or 0,
-                reverse=True
-            )
-            top_symbols = [t[0] for t in usdt_tickers[:top_n]]
-
-            # Always include BTC and ETH
-            if 'BTC/USDT' not in top_symbols:
-                top_symbols.insert(0, 'BTC/USDT')
-            if 'ETH/USDT' not in top_symbols:
-                top_symbols.insert(1, 'ETH/USDT')
-
-            return self.collect_all_symbols(top_symbols)
-
-        except Exception as e:
-            logger.error(f"Error in collect_top_symbols: {e}")
-            return {'error': str(e)}
-
-    def should_collect(self) -> bool:
-        """Check if enough time has passed since last collection"""
-        return (time.time() - self._last_collection_time) >= self._collection_interval
-
-
-# Global collector instance
+# 全局采集器实例
 _collector = None
+_lock = threading.Lock()
 
 
 def get_kline_collector() -> KlineCollector:
-    """Get or create the global K-line collector instance"""
+    """获取全局 K 线采集器实例"""
     global _collector
-    if _collector is None:
-        _collector = KlineCollector()
-    return _collector
+    with _lock:
+        if _collector is None:
+            _collector = KlineCollector()
+        return _collector
+
+
+def start_background_collector():
+    """启动后台采集器（在应用启动时调用）"""
+    collector = get_kline_collector()
+    collector.start()
+    return collector
+
+
+def stop_background_collector():
+    """停止后台采集器"""
+    global _collector
+    if _collector:
+        _collector.stop()
