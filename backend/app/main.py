@@ -40,9 +40,19 @@ app.include_router(routes.router, prefix="/api", tags=["api"])
 @app.on_event("startup")
 async def startup_event():
     """Initialize database on startup"""
-    print("Initializing database...")
+    print("Initializing SQLite database...")
     init_db()
-    print("Database initialized successfully")
+    print("SQLite database initialized successfully")
+
+    # Initialize TimescaleDB for K-line data
+    try:
+        from backend.database.timescale_db import init_timescale_db
+        print("Initializing TimescaleDB...")
+        init_timescale_db()
+        print("TimescaleDB initialized successfully")
+    except Exception as e:
+        print(f"Warning: TimescaleDB initialization failed: {e}")
+        print("K-line storage will not be available")
 
 
 @app.get("/")
