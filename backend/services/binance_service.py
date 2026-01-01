@@ -39,6 +39,35 @@ class BinanceService:
             }
         })
 
+    def _get_prices_from_coingecko(self) -> Dict:
+        """Fallback: Get BTC/ETH prices from CoinGecko API"""
+        try:
+            import requests
+            response = requests.get(
+                'https://api.coingecko.com/api/v3/simple/price',
+                params={
+                    'ids': 'bitcoin,ethereum',
+                    'vs_currencies': 'usd',
+                    'include_24hr_change': 'true'
+                },
+                timeout=10
+            )
+            if response.status_code == 200:
+                data = response.json()
+                return {
+                    'btc': {
+                        'last': data.get('bitcoin', {}).get('usd', 0),
+                        'percentage': data.get('bitcoin', {}).get('usd_24h_change', 0)
+                    },
+                    'eth': {
+                        'last': data.get('ethereum', {}).get('usd', 0),
+                        'percentage': data.get('ethereum', {}).get('usd_24h_change', 0)
+                    }
+                }
+        except Exception as e:
+            print(f'CoinGecko fallback failed: {e}')
+        return None
+
     def get_all_spot_symbols(self) -> List[str]:
         """Get all ACTIVE spot trading symbols from Binance"""
         try:
@@ -193,13 +222,13 @@ class BinanceService:
         }
 
     def get_market_overview(self) -> Dict:
-        """Get BTC and ETH prices for market context with caching"""
+        """Get BTC and ETH prices for market context with caching and fallback"""
         global _market_cache
         
         current_time = time.time()
         cache_valid = (current_time - _market_cache['last_update']) < _CACHE_TTL
         
-        # Try to get fresh data
+        # Try to get fresh data from Binance
         btc_ticker = None
         eth_ticker = None
         
@@ -213,14 +242,27 @@ class BinanceService:
                     _market_cache['btc_ticker'] = btc_ticker
                 if eth_ticker and eth_ticker.get('last', 0) > 0:
                     _market_cache['eth_ticker'] = eth_ticker
-                if btc_ticker or eth_ticker:
+                if (btc_ticker and btc_ticker.get('last', 0) > 0) or (eth_ticker and eth_ticker.get('last', 0) > 0):
                     _market_cache['last_update'] = current_time
             except Exception as e:
-                print(f"Error fetching tickers: {e}")
+                print(f"Error fetching tickers from Binance: {e}")
         
         # Use cached data if available
         btc_ticker = _market_cache.get('btc_ticker') or {}
         eth_ticker = _market_cache.get('eth_ticker') or {}
+        
+        # Fallback to CoinGecko if no valid data
+        if btc_ticker.get('last', 0) == 0 or eth_ticker.get('last', 0) == 0:
+            print("Using CoinGecko fallback for BTC/ETH prices...")
+            coingecko_data = self._get_prices_from_coingecko()
+            if coingecko_data:
+                if btc_ticker.get('last', 0) == 0:
+                    btc_ticker = coingecko_data['btc']
+                    _market_cache['btc_ticker'] = btc_ticker
+                if eth_ticker.get('last', 0) == 0:
+                    eth_ticker = coingecko_data['eth']
+                    _market_cache['eth_ticker'] = eth_ticker
+                _market_cache['last_update'] = current_time
         
         # Get Fear & Greed Index from CMC (with alternative.me fallback)
         fear_greed = self._get_fear_greed_index()
