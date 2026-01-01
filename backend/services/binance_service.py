@@ -3,7 +3,17 @@ import pandas as pd
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 import asyncio
+import time
 from backend.config import settings
+
+
+# Global cache for market data to prevent rate limiting
+_market_cache = {
+    'btc_ticker': None,
+    'eth_ticker': None,
+    'last_update': 0,
+}
+_CACHE_TTL = 30  # Cache TTL in seconds
 
 
 class BinanceService:
@@ -183,39 +193,51 @@ class BinanceService:
         }
 
     def get_market_overview(self) -> Dict:
-        """Get BTC and ETH prices for market context"""
-        try:
-            btc_ticker = self.fetch_ticker('BTC/USDT')
-            eth_ticker = self.fetch_ticker('ETH/USDT')
+        """Get BTC and ETH prices for market context with caching"""
+        global _market_cache
+        
+        current_time = time.time()
+        cache_valid = (current_time - _market_cache['last_update']) < _CACHE_TTL
+        
+        # Try to get fresh data
+        btc_ticker = None
+        eth_ticker = None
+        
+        if not cache_valid:
+            try:
+                btc_ticker = self.fetch_ticker('BTC/USDT')
+                eth_ticker = self.fetch_ticker('ETH/USDT')
+                
+                # Update cache if we got valid data
+                if btc_ticker and btc_ticker.get('last', 0) > 0:
+                    _market_cache['btc_ticker'] = btc_ticker
+                if eth_ticker and eth_ticker.get('last', 0) > 0:
+                    _market_cache['eth_ticker'] = eth_ticker
+                if btc_ticker or eth_ticker:
+                    _market_cache['last_update'] = current_time
+            except Exception as e:
+                print(f"Error fetching tickers: {e}")
+        
+        # Use cached data if available
+        btc_ticker = _market_cache.get('btc_ticker') or {}
+        eth_ticker = _market_cache.get('eth_ticker') or {}
+        
+        # Get Fear & Greed Index from CMC (with alternative.me fallback)
+        fear_greed = self._get_fear_greed_index()
 
-            # Get Fear & Greed Index from CMC (with alternative.me fallback)
-            fear_greed = self._get_fear_greed_index()
+        # Get Altcoin Season Index from blockchaincenter.net
+        altcoin_season = self._get_altcoin_season_index()
 
-            # Get Altcoin Season Index from blockchaincenter.net
-            altcoin_season = self._get_altcoin_season_index()
-
-            return {
-                'btc_price': btc_ticker.get('last', 0),
-                'eth_price': eth_ticker.get('last', 0),
-                'btc_change_24h': btc_ticker.get('percentage', 0),
-                'eth_change_24h': eth_ticker.get('percentage', 0),
-                'fear_greed_index': fear_greed.get('value', 0),
-                'fear_greed_label': fear_greed.get('label', 'N/A'),
-                'altcoin_season_index': altcoin_season.get('value', 0),
-                'altcoin_season_label': altcoin_season.get('label', 'N/A'),
-            }
-        except Exception as e:
-            print(f"Error getting market overview: {e}")
-            return {
-                'btc_price': 0,
-                'eth_price': 0,
-                'btc_change_24h': 0,
-                'eth_change_24h': 0,
-                'fear_greed_index': 0,
-                'fear_greed_label': 'N/A',
-                'altcoin_season_index': 0,
-                'altcoin_season_label': 'N/A',
-            }
+        return {
+            'btc_price': btc_ticker.get('last', 0),
+            'eth_price': eth_ticker.get('last', 0),
+            'btc_change_24h': btc_ticker.get('percentage', 0),
+            'eth_change_24h': eth_ticker.get('percentage', 0),
+            'fear_greed_index': fear_greed.get('value', 0),
+            'fear_greed_label': fear_greed.get('label', 'N/A'),
+            'altcoin_season_index': altcoin_season.get('value', 0),
+            'altcoin_season_label': altcoin_season.get('label', 'N/A'),
+        }
 
     def _get_fear_greed_index(self) -> Dict:
         """Get CMC Crypto Fear & Greed Index by scraping CoinMarketCap page"""
