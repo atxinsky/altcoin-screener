@@ -156,7 +156,7 @@ class ScreeningService:
             return None
 
         # Fetch OHLCV data
-        df = self.binance.fetch_ohlcv(symbol, timeframe, limit=500)
+        df = self.binance.fetch_ohlcv_smart(symbol, timeframe, limit=500)
         if df.empty:
             return None
 
@@ -355,7 +355,7 @@ class ScreeningService:
 
         for tf, lookback in timeframes.items():
             try:
-                df = self.binance.fetch_ohlcv(symbol, tf, limit=lookback + 1)
+                df = self.binance.fetch_ohlcv_smart(symbol, tf, limit=lookback + 1)
                 if not df.empty and len(df) > lookback:
                     current = df['close'].iloc[-1]
                     previous = df['close'].iloc[-lookback - 1]

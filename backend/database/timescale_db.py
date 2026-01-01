@@ -226,3 +226,103 @@ def cleanup_old_klines(days_to_keep: int = 30) -> int:
         """), {'cutoff': cutoff})
         db.commit()
         return result.rowcount
+
+
+# Timeframe aggregation mappings
+TIMEFRAME_MINUTES = {
+    '5m': 5,
+    '15m': 15,
+    '1h': 60,
+    '4h': 240,
+    '1d': 1440
+}
+
+
+def get_aggregated_klines(
+    symbol: str,
+    timeframe: str,
+    limit: int = 500
+) -> List[Dict]:
+    """
+    Get aggregated K-line data from 5m base data
+
+    Args:
+        symbol: Trading pair symbol
+        timeframe: Target timeframe (15m, 1h, 4h, 1d)
+        limit: Number of candles to return
+
+    Returns:
+        List of aggregated OHLCV data
+    """
+    if timeframe == '5m':
+        # No aggregation needed for 5m
+        return get_klines(symbol, '5m', limit=limit)
+
+    minutes = TIMEFRAME_MINUTES.get(timeframe, 5)
+    interval = f'{minutes} minutes'
+
+    with get_ts_db() as db:
+        # Use TimescaleDB time_bucket for aggregation
+        query = text(f"""
+            SELECT
+                time_bucket('{interval}', time) AS bucket_time,
+                :symbol AS symbol,
+                :timeframe AS timeframe,
+                (array_agg(open ORDER BY time ASC))[1] AS open,
+                MAX(high) AS high,
+                MIN(low) AS low,
+                (array_agg(close ORDER BY time DESC))[1] AS close,
+                SUM(volume) AS volume,
+                SUM(quote_volume) AS quote_volume,
+                SUM(trades) AS trades
+            FROM klines
+            WHERE symbol = :symbol AND timeframe = '5m'
+            GROUP BY bucket_time
+            ORDER BY bucket_time DESC
+            LIMIT :limit
+        """)
+
+        result = db.execute(query, {
+            'symbol': symbol,
+            'timeframe': timeframe,
+            'limit': limit
+        })
+        rows = result.fetchall()
+
+        return [
+            {
+                'time': row[0],
+                'symbol': row[1],
+                'timeframe': row[2],
+                'open': float(row[3]) if row[3] else 0,
+                'high': float(row[4]) if row[4] else 0,
+                'low': float(row[5]) if row[5] else 0,
+                'close': float(row[6]) if row[6] else 0,
+                'volume': float(row[7]) if row[7] else 0,
+                'quote_volume': float(row[8]) if row[8] else 0,
+                'trades': int(row[9]) if row[9] else 0
+            }
+            for row in rows
+        ]
+
+
+def has_sufficient_data(symbol: str, min_candles: int = 100) -> bool:
+    """Check if we have enough 5m data for a symbol"""
+    with get_ts_db() as db:
+        result = db.execute(text("""
+            SELECT COUNT(*) FROM klines
+            WHERE symbol = :symbol AND timeframe = '5m'
+        """), {'symbol': symbol})
+        row = result.fetchone()
+        return row[0] >= min_candles if row else False
+
+
+def get_symbols_with_data() -> List[str]:
+    """Get list of symbols that have 5m data in the database"""
+    with get_ts_db() as db:
+        result = db.execute(text("""
+            SELECT DISTINCT symbol FROM klines
+            WHERE timeframe = '5m'
+            ORDER BY symbol
+        """))
+        return [row[0] for row in result.fetchall()]

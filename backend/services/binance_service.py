@@ -6,6 +6,13 @@ import asyncio
 import time
 from backend.config import settings
 
+# Try to import TimescaleDB functions (optional)
+try:
+    from backend.database.timescale_db import get_aggregated_klines, has_sufficient_data
+    TIMESCALE_AVAILABLE = True
+except ImportError:
+    TIMESCALE_AVAILABLE = False
+
 
 # Global cache for market data to prevent rate limiting
 _market_cache = {
@@ -157,6 +164,34 @@ class BinanceService:
         except Exception as e:
             print(f"Error fetching OHLCV for {symbol}: {e}")
             return pd.DataFrame()
+
+    def fetch_ohlcv_smart(
+        self,
+        symbol: str,
+        timeframe: str = '5m',
+        limit: int = 500
+    ) -> pd.DataFrame:
+        """
+        Smart OHLCV fetch: tries database first, then API
+        For 15m/1h/4h/1d, uses aggregated 5m data from database
+        """
+        # Try database first for aggregated data
+        if TIMESCALE_AVAILABLE and timeframe != '5m':
+            try:
+                if has_sufficient_data(symbol, min_candles=50):
+                    klines = get_aggregated_klines(symbol, timeframe, limit)
+                    if klines:
+                        df = pd.DataFrame(klines)
+                        df['timestamp'] = pd.to_datetime(df['time'])
+                        df = df.rename(columns={'time': 'timestamp'})
+                        df['symbol'] = symbol
+                        df['timeframe'] = timeframe
+                        return df[['timestamp', 'open', 'high', 'low', 'close', 'volume', 'quote_volume', 'symbol', 'timeframe']]
+            except Exception as e:
+                print(f"Database fetch failed for {symbol}, falling back to API: {e}")
+        
+        # Fallback to API
+        return self.fetch_ohlcv(symbol, timeframe, limit)
 
     def fetch_ticker(self, symbol: str) -> Dict:
         """Fetch current ticker data"""

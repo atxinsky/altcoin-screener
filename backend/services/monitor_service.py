@@ -12,6 +12,7 @@ from backend.services.screening_service import ScreeningService
 from backend.services.notification_service import NotificationService
 from backend.services.sim_trading_service import SimTradingService
 from backend.config import settings
+from backend.services.kline_collector import get_kline_collector
 from datetime import timedelta
 
 
@@ -246,6 +247,10 @@ class MonitorService:
         for start_h, start_m, end_h, end_m in self.trading_windows:
             print(f"  - {start_h:02d}:{start_m:02d} - {end_h:02d}:{end_m:02d}")
 
+        # Schedule periodic K-line collection (every 5 minutes)
+        schedule.every(5).minutes.do(self._run_kline_collection)
+        print("K-line collection scheduled: every 5 minutes")
+
         # Schedule periodic screening
         schedule.every(self.screening_interval).seconds.do(
             lambda: asyncio.run(self.run_screening_job(timeframes))
@@ -262,6 +267,16 @@ class MonitorService:
         while self.is_running:
             schedule.run_pending()
             time.sleep(1)
+
+    def _run_kline_collection(self):
+        """Run K-line collection task"""
+        try:
+            collector = get_kline_collector()
+            # Collect top 100 symbols by volume
+            result = collector.collect_top_symbols(top_n=100)
+            print(f"[K-line Collection] Saved {result.get('saved', 0)} candles for {result.get('symbols', 0)} symbols")
+        except Exception as e:
+            print(f"[K-line Collection] Error: {e}")
 
     def _run_cleanup(self):
         """Run data cleanup task"""
