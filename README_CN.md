@@ -1,4 +1,4 @@
-# Tretra Trading Station - 快速使用指南
+﻿# Tretra Trading Station - 快速使用指南
 
 ## 平台简介
 
@@ -18,7 +18,7 @@ cd C:\Users\atxin\Desktop\binance-altcoin-screener
 docker-compose up -d
 
 # 访问平台
-打开浏览器: http://localhost:3000
+打开浏览器: http://localhost:3080
 ```
 
 启动后，在顶部导航栏可切换：
@@ -53,7 +53,7 @@ docker-compose up -d
    ```
 
 5. **访问Web界面**
-   - 打开浏览器访问 http://localhost:3000
+   - 打开浏览器访问 http://localhost:3080
 
 ### 仅命令行使用
 

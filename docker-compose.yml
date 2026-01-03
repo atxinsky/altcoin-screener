@@ -1,4 +1,4 @@
-version: '3.8'
+﻿version: '3.8'
 
 services:
   # TimescaleDB for time-series data (K-lines)
@@ -100,7 +100,7 @@ services:
     container_name: ledger-frontend
     restart: unless-stopped
     ports:
-      - "3000:80"
+      - "3080:80"
     networks:
       - ledger-network
     depends_on:

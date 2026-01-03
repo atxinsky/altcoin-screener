@@ -1,4 +1,4 @@
-# 更新日志 (Changelog)
+﻿# 更新日志 (Changelog)
 
 ## v1.3.0 (2025-12-30)
 
@@ -119,6 +119,6 @@
 - **修订号**: 向下兼容的问题修正
 
 ### 服务端口
-- **前端界面**: http://localhost:3000
+- **前端界面**: http://localhost:3080
 - **后端 API**: http://localhost:8001
 - **回测服务**: http://localhost:8501 (嵌入前端)

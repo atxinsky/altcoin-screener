@@ -1,4 +1,4 @@
-# Tretra Trading Station
+﻿# Tretra Trading Station
 
 专业加密货币交易分析平台，集成山寨币筛选、交易回测和模拟交易功能。
 
@@ -48,7 +48,7 @@ cp .env.example .env
 docker-compose up -d
 
 # 4. 访问
-# 前端界面: http://localhost:3000
+# 前端界面: http://localhost:3080
 # API文档:  http://localhost:8001/docs
 ```
 
@@ -60,7 +60,7 @@ pip install -r backend/requirements.txt
 python run_backend.py  # 访问 http://localhost:8001
 
 # 前端 (Node.js 18+)
-cd frontend && npm install && npm run dev  # 访问 http://localhost:3000
+cd frontend && npm install && npm run dev  # 访问 http://localhost:3080
 
 # 回测 (可选)
 cd backtest && pip install -r requirements.txt
@@ -120,7 +120,7 @@ TELEGRAM_CHAT_ID=your_chat_id      # @userinfobot 获取
 
 | 服务 | 端口 | 说明 |
 |------|------|------|
-| 前端 | 3000 | React 主界面 |
+| 前端 | 3080 | React 主界面 |
 | 后端 | 8001 | FastAPI API |
 | 回测 | 8501 | Streamlit（嵌入前端） |
 
