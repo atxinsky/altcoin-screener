@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
+import { toast } from 'sonner'
 import {
   Activity,
   TrendingUp,
@@ -161,6 +162,8 @@ export default function ScreenerPage() {
       if (response.success !== false) {
         setResults(response.results || [])
         setDataSource('screening')
+        const count = (response.results || []).length
+        toast.success(`Found ${count} opportunities`)
       }
     } catch (error) {
       console.error('Screening failed:', error)
@@ -184,9 +187,11 @@ export default function ScreenerPage() {
           newSet.delete(symbol)
           return newSet
         })
+        toast.success(`${symbol} removed from watchlist`)
       } else {
         await addToWatchlist(symbol, '')
         setWatchlist(prev => new Set(prev).add(symbol))
+        toast.success(`${symbol} added to watchlist`)
       }
     } catch (error) {
       console.error('Watchlist operation failed:', error)
@@ -253,11 +258,11 @@ export default function ScreenerPage() {
       if (tradeMode === 'paper') {
         // Paper trading - open sim position
         if (!selectedPaperAccount) {
-          alert('Please select a paper trading account')
+          toast.warning('Please select a paper trading account')
           return
         }
         await openSimPosition(selectedPaperAccount, tradeSymbol)
-        alert(`Paper trade opened: ${tradeSymbol}`)
+        toast.success(`Paper trade opened: ${tradeSymbol}`)
       } else {
         // Real trading - calculate quantity based on mode
         let finalQuantity = 0
@@ -265,13 +270,13 @@ export default function ScreenerPage() {
         if (quantityMode === 'usdt') {
           // Convert USDT amount to coin quantity
           if (!usdtAmount || parseFloat(usdtAmount) <= 0) {
-            alert('Please enter USDT amount')
+            toast.warning('Please enter USDT amount')
             setTradeLoading(false)
             return
           }
           const priceToUse = orderType === 'limit' && limitPrice ? parseFloat(limitPrice) : currentPrice
           if (!priceToUse || priceToUse <= 0) {
-            alert('Unable to calculate quantity: price not available')
+            toast.warning('Unable to calculate quantity: price not available')
             setTradeLoading(false)
             return
           }
@@ -279,7 +284,7 @@ export default function ScreenerPage() {
         } else {
           // Direct coin quantity
           if (!tradeQuantity || parseFloat(tradeQuantity) <= 0) {
-            alert('Please enter quantity')
+            toast.warning('Please enter quantity')
             setTradeLoading(false)
             return
           }
@@ -290,18 +295,17 @@ export default function ScreenerPage() {
           await createMarketOrder(tradeSymbol, tradeSide, finalQuantity, 'Quick Trade')
         } else {
           if (!limitPrice) {
-            alert('Please enter limit price')
+            toast.warning('Please enter limit price')
             setTradeLoading(false)
             return
           }
           await createLimitOrder(tradeSymbol, tradeSide, finalQuantity, parseFloat(limitPrice), 'Quick Trade')
         }
-        alert(`${orderType === 'market' ? 'Market' : 'Limit'} order submitted (${finalQuantity.toFixed(6)} ${tradeSymbol.split('/')[0]})`)
+        toast.success(`${orderType === 'market' ? 'Market' : 'Limit'} order submitted`)
       }
       setTradeModalOpen(false)
     } catch (error) {
       console.error('Trade failed:', error)
-      alert(`Trade failed: ${error.message || 'Unknown error'}`)
     } finally {
       setTradeLoading(false)
     }

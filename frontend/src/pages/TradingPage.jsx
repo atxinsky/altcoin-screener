@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
+import { toast } from 'sonner'
 import {
   Wallet,
   TrendingUp,
@@ -216,6 +217,7 @@ function PaperTradingSection() {
         require_macd_golden: true, require_volume_surge: false, trailing_stop_enabled: false,
         trailing_stop_pct: 2.0, max_holding_hours: 24
       })
+      toast.success('Account created successfully')
       await loadAccounts()
     } catch (error) {
       console.error('Failed to create account:', error)
@@ -229,6 +231,7 @@ function PaperTradingSection() {
     try {
       const newStatus = !selectedAccount.auto_trading_enabled
       await toggleAutoTrading(selectedAccount.id, newStatus)
+      toast.success(newStatus ? 'Auto trading enabled' : 'Auto trading disabled')
       loadAccounts()
     } catch (error) {
       console.error('Failed to toggle auto trading:', error)
@@ -240,6 +243,7 @@ function PaperTradingSection() {
     try {
       setLoading(true)
       await toggleAutoTrading(selectedAccount.id, true)
+      toast.success('Scan triggered')
       loadAccountData(selectedAccount.id)
       loadAccounts()
     } catch (error) {
@@ -253,6 +257,7 @@ function PaperTradingSection() {
     try {
       setLoading(true)
       await closePosition(positionId)
+      toast.success('Position closed')
       loadAccountData(selectedAccount.id)
       loadAccounts()
     } catch (error) {
@@ -272,6 +277,7 @@ function PaperTradingSection() {
       setPositions([])
       setTrades([])
       setLogs([])
+      toast.success('Account deleted')
       await loadAccounts()
     } catch (error) {
       console.error('Failed to delete account:', error)

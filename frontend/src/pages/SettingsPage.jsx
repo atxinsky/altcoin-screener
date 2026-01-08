@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
+import { toast } from 'sonner'
 import {
   Settings,
   Bell,
@@ -68,6 +69,7 @@ export default function SettingsPage() {
     setSaving(true)
     try {
       await updateNotificationSettings(settings)
+      toast.success('Settings saved successfully')
     } catch (error) {
       console.error('Failed to save settings:', error)
     } finally {
@@ -79,6 +81,7 @@ export default function SettingsPage() {
     setTesting(true)
     try {
       await testNotification()
+      toast.success('Test notification sent')
     } catch (error) {
       console.error('Failed to send test notification:', error)
     } finally {

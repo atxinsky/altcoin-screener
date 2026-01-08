@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { toast } from 'sonner'
 
 const API_BASE_URL = '/api'
 
@@ -9,6 +10,46 @@ const api = axios.create({
     'Content-Type': 'application/json',
   },
 })
+
+// Response interceptor for error handling
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    let errorMessage = 'An unexpected error occurred'
+
+    if (error.response) {
+      // Server responded with error status
+      const { status, data } = error.response
+      if (data?.detail) {
+        errorMessage = data.detail
+      } else if (status === 400) {
+        errorMessage = 'Invalid request. Please check your input.'
+      } else if (status === 404) {
+        errorMessage = 'Resource not found'
+      } else if (status === 429) {
+        errorMessage = 'Too many requests. Please slow down.'
+      } else if (status === 500) {
+        errorMessage = 'Server error. Please try again later.'
+      } else if (status === 503) {
+        errorMessage = 'Service unavailable. Please try again later.'
+      }
+    } else if (error.request) {
+      // Request made but no response
+      if (error.code === 'ECONNABORTED') {
+        errorMessage = 'Request timed out. Please try again.'
+      } else {
+        errorMessage = 'Unable to connect to server. Check your connection.'
+      }
+    }
+
+    // Show toast for API errors (can be suppressed by caller if needed)
+    if (!error.config?.suppressToast) {
+      toast.error(errorMessage)
+    }
+
+    return Promise.reject(error)
+  }
+)
 
 // Market endpoints
 export const getMarketOverview = async () => {
