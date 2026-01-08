@@ -31,6 +31,11 @@
 - **频率控制**: 最小间隔、每日上限、静默时段
 - **智能过滤**: 只推送高分机会
 
+### 用户体验
+- **Toast 通知**: 所有操作即时反馈，成功/失败/警告状态一目了然
+- **API 错误处理**: 自动捕获网络错误、超时、服务端异常并友好提示
+- **专业 K 线图**: 基于 klinecharts，支持多种技术指标
+
 ## 快速开始
 
 ### Docker 部署（推荐）
@@ -143,6 +148,11 @@ docker-compose down
 
 ## 更新日志
 
+### v1.4 (2026-01-08)
+- Toast 通知系统：所有用户操作（保存设置、开仓平仓、自选添加等）即时反馈
+- API 错误拦截器：自动捕获并显示友好的错误提示
+- 移除 alert() 弹窗，统一使用 Sonner Toast 组件
+
 ### v1.3 (2025-12-30)
 - 通知设置面板（频率控制、静默时段、每日限额）
 - 交易时间窗口限制（北京时间）
@@ -165,7 +175,7 @@ docker-compose down
 ## 技术栈
 
 - **后端**: Python 3.9+, FastAPI, SQLAlchemy, CCXT
-- **前端**: React 18, Ant Design, klinecharts
+- **前端**: React 18, Tailwind CSS, Radix UI, Sonner, klinecharts
 - **回测**: Streamlit, Pandas, Plotly
 - **数据库**: SQLite
 - **部署**: Docker, Docker Compose
